@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>chess.com.puter</title>
+  <link rel="stylesheet" href="assets/chessground.base.css">
+  <link rel="stylesheet" href="assets/chessground.brown.css">
+  <link rel="stylesheet" href="assets/chessground.cburnett.css">
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <div id="app">
+    <header id="header">
+      <h1>chess.com.puter</h1>
+      <div id="pgn-input"></div>
+    </header>
+
+    <!-- Idle state message -->
+    <p id="status-message">Open a chess.com game to analyze it, or paste PGN.</p>
+
+    <!-- Analysis mode (completed games) -->
+    <section id="analysis-section" hidden>
+      <div class="board-row">
+        <div id="eval-bar"></div>
+        <div id="board-container"></div>
+      </div>
+      <div id="move-list"></div>
+      <div id="control-bar"></div>
+      <div id="engine-lines"></div>
+    </section>
+
+    <!-- Live helper mode (active games) -->
+    <section id="live-section" hidden></section>
+
+    <footer id="status-bar">
+      <span class="status-text">Free the fish!</span>
+    </footer>
+  </div>
+  <script src="panel.js"></script>
+</body>
+</html>
