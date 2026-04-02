@@ -1,64 +1,62 @@
 // Vanilla JS move list component.
-// Renders PGN moves as clickable spans with keyboard navigation.
+// Classification colors only applied to the detected player's moves.
+// Glyphs (?!, ?, ??) shown for all moves.
 
 import { parsePgn, startingPosition } from 'chessops/pgn';
 import { parseSan } from 'chessops/san';
 import { makeFen } from 'chessops/fen';
+import { makeUci } from 'chessops/util';
 
-/**
- * Create a move list component.
- * @param {HTMLElement} container - the element to render into
- * @param {(ply: number, fen: string) => void} onMoveSelect - called when a move is clicked
- * @returns {object} move list controller
- */
 export function createMoveList(container, onMoveSelect) {
-  let positions = []; // Array of { fen, san } indexed by ply
+  let positions = [];
+  let classifications = [];
   let currentPly = 0;
+  let myColor = 'white'; // which color is "me"
 
-  /**
-   * Load a PGN string and render the move list.
-   * @param {string} pgn
-   */
+  function isMyPly(ply) {
+    return myColor === 'white' ? ply % 2 === 1 : ply % 2 === 0;
+  }
+
   function loadPgn(pgn) {
     positions = [];
+    classifications = [];
     currentPly = 0;
     container.innerHTML = '';
-
     if (!pgn) return;
 
-    // Parse PGN
     const games = parsePgn(pgn);
-    if (!games || games.length === 0) return;
-
+    if (!games?.length) return;
     const game = games[0];
-
-    // Get starting position from PGN headers (handles FEN tag)
     const posResult = startingPosition(game.headers);
     if (posResult.isErr) return;
 
     const pos = posResult.value;
+    positions.push({ fen: makeFen(pos.toSetup()), san: null, uci: null });
 
-    // Starting position FEN
-    positions.push({ fen: makeFen(pos.toSetup()), san: null });
-
-    // Walk the main line using the mainline() iterator
     for (const node of game.moves.mainline()) {
       const san = node.san;
       if (!san) break;
-
-      // Parse the SAN move
       const move = parseSan(pos, san);
-      if (!move) break; // Illegal move
-
-      // Play the move (mutates pos)
+      if (!move) break;
+      const uci = makeUci(move);
       pos.play(move);
-
-      // Store the resulting position
-      positions.push({ fen: makeFen(pos.toSetup()), san });
+      positions.push({ fen: makeFen(pos.toSetup()), san, uci });
     }
 
     render();
-    goToMove(positions.length - 1); // Start at the last move
+    goToMove(positions.length - 1);
+  }
+
+  function setPlayerColor(color) {
+    myColor = color;
+    if (classifications.length) render(); // re-render with updated coloring
+    if (currentPly > 0) highlightPly(currentPly);
+  }
+
+  function setClassifications(classResults) {
+    classifications = classResults || [];
+    render();
+    if (currentPly > 0) highlightPly(currentPly);
   }
 
   function render() {
@@ -67,6 +65,8 @@ export function createMoveList(container, onMoveSelect) {
     for (let ply = 1; ply < positions.length; ply++) {
       const { san } = positions[ply];
       const isWhite = ply % 2 === 1;
+      const cls = classifications[ply];
+      const mine = isMyPly(ply);
 
       // Move number
       if (isWhite) {
@@ -76,84 +76,66 @@ export function createMoveList(container, onMoveSelect) {
         container.appendChild(numSpan);
       }
 
-      // Move text
       const moveSpan = document.createElement('span');
       moveSpan.className = 'move';
-      moveSpan.textContent = san;
       moveSpan.dataset.ply = ply;
+
+      // Only color MY moves with classification; opponent moves stay neutral
+      if (cls && mine) {
+        moveSpan.classList.add(`move-${cls.classification}`);
+      }
+
+      // Glyph shown for ALL moves (both players)
+      let displayText = san;
+      if (cls?.glyph) displayText += cls.glyph;
+      moveSpan.textContent = displayText;
+
+      if (cls) {
+        const evalStr = (cls.evalAfter / 100).toFixed(1);
+        const epStr = cls.epLoss !== undefined ? cls.epLoss.toFixed(3) : '?';
+        moveSpan.title = `${cls.classification} (EP loss: ${epStr}) | eval: ${evalStr}`;
+      }
+
       moveSpan.addEventListener('click', () => goToMove(ply));
       container.appendChild(moveSpan);
+    }
+  }
+
+  function highlightPly(ply) {
+    for (const m of container.querySelectorAll('.move')) {
+      m.classList.toggle('active', parseInt(m.dataset.ply) === ply);
     }
   }
 
   function goToMove(ply) {
     if (ply < 0 || ply >= positions.length) return;
     currentPly = ply;
-
-    // Update highlighting
-    const allMoves = container.querySelectorAll('.move');
-    for (const m of allMoves) {
-      m.classList.toggle('active', parseInt(m.dataset.ply) === ply);
-    }
-
-    // Auto-scroll to keep active move visible
+    highlightPly(ply);
     const activeEl = container.querySelector('.move.active');
-    if (activeEl) {
-      activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
-
-    // Notify listener
-    onMoveSelect(ply, positions[ply].fen);
+    if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    onMoveSelect(ply, positions[ply].fen, classifications[ply] || null);
   }
 
-  function goForward() {
-    goToMove(currentPly + 1);
-  }
+  function goForward() { goToMove(currentPly + 1); }
+  function goBack() { goToMove(currentPly - 1); }
+  function goToStart() { goToMove(0); }
+  function goToEnd() { goToMove(positions.length - 1); }
 
-  function goBack() {
-    goToMove(currentPly - 1);
-  }
-
-  function goToStart() {
-    goToMove(0);
-  }
-
-  function goToEnd() {
-    goToMove(positions.length - 1);
-  }
-
-  // Keyboard navigation
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
-    switch (e.key) {
-      case 'ArrowLeft':
-        e.preventDefault();
-        goBack();
-        break;
-      case 'ArrowRight':
-        e.preventDefault();
-        goForward();
-        break;
-      case 'Home':
-        e.preventDefault();
-        goToStart();
-        break;
-      case 'End':
-        e.preventDefault();
-        goToEnd();
-        break;
-    }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); goBack(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); goForward(); }
+    else if (e.key === 'Home') { e.preventDefault(); goToStart(); }
+    else if (e.key === 'End') { e.preventDefault(); goToEnd(); }
   });
 
   return {
-    loadPgn,
-    goToMove,
-    goForward,
-    goBack,
-    goToStart,
-    goToEnd,
+    loadPgn, setClassifications, setPlayerColor,
+    goToMove, goForward, goBack, goToStart, goToEnd,
     getCurrentPly: () => currentPly,
     getPosition: (ply) => positions[ply] || null,
+    getClassification: (ply) => classifications[ply] || null,
     getTotalPlies: () => positions.length - 1,
+    getAllPositions: () => positions,
   };
 }

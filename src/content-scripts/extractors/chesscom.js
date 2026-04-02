@@ -7,107 +7,66 @@
  * @returns {Promise<string|null>}
  */
 export async function extractChessComPgn() {
-  // Strategy A: Share dialog PGN textarea
-  const sharePgn = await tryShareDialog();
-  if (sharePgn) return sharePgn;
-
-  // Strategy B: DOM move list scraping
+  // Strategy A: DOM move list scraping (most reliable for current chess.com)
   const scrapedPgn = tryMoveListScrape();
-  if (scrapedPgn) return scrapedPgn;
+  if (scrapedPgn) {
+    console.log('chess.com.puter: PGN extracted via move list scrape');
+    return scrapedPgn;
+  }
+
+  // Strategy B: Share dialog PGN textarea
+  const sharePgn = await tryShareDialog();
+  if (sharePgn) {
+    console.log('chess.com.puter: PGN extracted via share dialog');
+    return sharePgn;
+  }
 
   // Strategy C: Embedded script data
   const scriptPgn = tryScriptData();
-  if (scriptPgn) return scriptPgn;
+  if (scriptPgn) {
+    console.log('chess.com.puter: PGN extracted via script data');
+    return scriptPgn;
+  }
 
+  console.log('chess.com.puter: all PGN extraction strategies failed');
   return null;
 }
 
-// --- Strategy A: Share Dialog ---
+// --- Strategy A: Move List Scraping ---
 
-async function tryShareDialog() {
-  // Find the share button
-  const shareBtn = findElement([
-    'button [data-glyph="graph-nodes-share"]',
-    '[aria-label="Share"]',
-    '.share-game-button',
+function tryMoveListScrape() {
+  // Chess.com uses <wc-simple-move-list> with data-cy="move-list"
+  const moveListContainer = findElement([
+    '[data-cy="move-list"]',
+    'wc-simple-move-list',
+    '.move-list',
   ]);
 
-  if (!shareBtn) return null;
-
-  // Click the button (or its parent if we matched a child element)
-  const clickTarget = shareBtn.closest('button') || shareBtn;
-  clickTarget.click();
-
-  // Wait for the share modal to appear
-  const modal = await waitForElement([
-    '.share-menu-tab-pgn-textarea',
-    'textarea[aria-label*="PGN"]',
-    '.share-menu-component textarea',
-  ], 3000);
-
-  if (!modal) {
-    // Close any modal that might have opened
-    closeModal();
+  if (!moveListContainer) {
+    console.log('chess.com.puter: no move list container found');
     return null;
   }
 
-  // If there's a PGN tab, click it first
-  const pgnTab = document.querySelector('#tab-pgn') || findElementByText('button', 'PGN');
-  if (pgnTab) {
-    pgnTab.click();
-    await delay(300);
+  // Chess.com move elements have class "node" and are either "white-move" or "black-move"
+  // Move text is inside <span class="node-highlight-content">
+  // Figurine notation uses <span data-figurine="B"> instead of text "B"
+  const nodeElements = moveListContainer.querySelectorAll('.node');
+
+  if (nodeElements.length === 0) {
+    console.log('chess.com.puter: no .node elements found in move list');
+    return null;
   }
 
-  // Read PGN from textarea
-  const textarea = findElement([
-    '.share-menu-tab-pgn-textarea',
-    'textarea[aria-label*="PGN"]',
-    '.share-menu-component textarea',
-  ]);
-
-  const pgn = textarea?.value?.trim() || null;
-
-  // Close the modal
-  closeModal();
-
-  return pgn;
-}
-
-// --- Strategy B: Move List Scraping ---
-
-function tryMoveListScrape() {
-  const moveListContainer = findElement([
-    '.move-list-component',
-    '[data-testid="move-list"]',
-    '.play-controller-moves',
-    '.game-review-moves',
-  ]);
-
-  if (!moveListContainer) return null;
-
-  // Extract individual moves
   const moves = [];
-  const moveElements = moveListContainer.querySelectorAll('[data-ply], .move-text, .node .move');
-
-  if (moveElements.length === 0) {
-    // Heuristic: find elements that look like chess moves
-    const allElements = moveListContainer.querySelectorAll('*');
-    for (const el of allElements) {
-      const text = el.textContent?.trim();
-      if (text && isChessMove(text) && el.children.length === 0) {
-        moves.push(text);
-      }
-    }
-  } else {
-    for (const el of moveElements) {
-      const text = el.textContent?.trim();
-      if (text && isChessMove(text)) {
-        moves.push(text);
-      }
-    }
+  for (const node of nodeElements) {
+    const san = extractMoveText(node);
+    if (san) moves.push(san);
   }
 
-  if (moves.length === 0) return null;
+  if (moves.length === 0) {
+    console.log('chess.com.puter: no moves extracted from nodes');
+    return null;
+  }
 
   // Assemble PGN movetext
   let pgn = '';
@@ -122,7 +81,89 @@ function tryMoveListScrape() {
   const result = findGameResult();
   if (result) pgn += result;
 
+  console.log('chess.com.puter: scraped', moves.length, 'moves');
   return pgn.trim() || null;
+}
+
+/**
+ * Extract SAN move text from a chess.com move node element.
+ * Handles figurine notation where piece symbols are <span data-figurine="X">.
+ */
+function extractMoveText(node) {
+  // The move text is typically inside .node-highlight-content
+  const contentEl = node.querySelector('.node-highlight-content') || node;
+
+  let san = '';
+  for (const child of contentEl.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      san += child.textContent;
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      // Check for figurine piece notation
+      const figurine = child.getAttribute('data-figurine');
+      if (figurine) {
+        san += figurine; // "K", "Q", "R", "B", "N"
+      } else {
+        san += child.textContent || '';
+      }
+    }
+  }
+
+  san = san.trim();
+  if (!san) return null;
+
+  // Validate it looks like a chess move
+  if (isChessMove(san)) return san;
+
+  // Sometimes there's extra whitespace or annotations
+  san = san.replace(/\s+/g, '');
+  if (isChessMove(san)) return san;
+
+  return null;
+}
+
+// --- Strategy B: Share Dialog ---
+
+async function tryShareDialog() {
+  // Find the share button
+  const shareBtn = findElement([
+    '[data-cy="sidebar-share-icon"]',
+    'button [data-glyph="graph-nodes-share"]',
+    '[aria-label="Share"]',
+  ]);
+
+  if (!shareBtn) return null;
+
+  const clickTarget = shareBtn.closest('button') || shareBtn.closest('a') || shareBtn;
+  clickTarget.click();
+
+  // Wait for share modal
+  const modal = await waitForElement([
+    '.share-menu-tab-pgn-textarea',
+    'textarea[aria-label*="PGN"]',
+    '.share-menu-component textarea',
+  ], 3000);
+
+  if (!modal) {
+    closeModal();
+    return null;
+  }
+
+  // Click PGN tab if present
+  const pgnTab = document.querySelector('#tab-pgn') || findElementByText('button', 'PGN');
+  if (pgnTab) {
+    pgnTab.click();
+    await delay(300);
+  }
+
+  const textarea = findElement([
+    '.share-menu-tab-pgn-textarea',
+    'textarea[aria-label*="PGN"]',
+    '.share-menu-component textarea',
+  ]);
+
+  const pgn = textarea?.value?.trim() || null;
+  closeModal();
+  return pgn;
 }
 
 // --- Strategy C: Script Data ---
@@ -131,13 +172,11 @@ function tryScriptData() {
   const scripts = document.querySelectorAll('script');
   for (const script of scripts) {
     const text = script.textContent || '';
-    // Look for PGN embedded in JSON data
     const pgnMatch = text.match(/"pgn"\s*:\s*"((?:[^"\\]|\\.)*)"/);
     if (pgnMatch) {
       try {
         return JSON.parse(`"${pgnMatch[1]}"`);
       } catch (e) {
-        // JSON parse failed, try raw
         return pgnMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
       }
     }
@@ -147,64 +186,73 @@ function tryScriptData() {
 
 // --- Metadata ---
 
-/**
- * Extract player names and ratings from the chess.com page.
- * @returns {{ white: {name, rating}, black: {name, rating}, timeControl, url }}
- */
 export function getChessComMetadata() {
   const metadata = {
     white: { name: 'White', rating: null },
     black: { name: 'Black', rating: null },
+    playerColor: 'white', // which color the user is playing
     timeControl: null,
     url: window.location.href,
   };
 
-  // Try to find player name elements
-  const playerEls = document.querySelectorAll('.player-component, [data-cy="player-info"]');
-  if (playerEls.length >= 2) {
-    // Top player is typically opponent (black if we're white)
-    // But this varies; just grab what we can
-    for (const el of playerEls) {
-      const nameEl = el.querySelector('.user-username-component, .username, a[data-username]');
-      const ratingEl = el.querySelector('.user-rating, .rating');
-      const name = nameEl?.textContent?.trim() || nameEl?.getAttribute('data-username');
-      const rating = ratingEl?.textContent?.replace(/[()]/g, '').trim();
+  // On chess.com, the bottom player is always "me".
+  // Detect which color is on bottom by checking the clock or board orientation.
+  const bottomPlayer = document.querySelector('#board-layout-player-bottom');
+  const topPlayer = document.querySelector('#board-layout-player-top');
 
-      if (name) {
-        // Determine color by position in DOM (bottom = player's color)
-        const isBottom = el.closest('.board-layout-bottom, .player-bottom') !== null;
-        if (isBottom) {
-          metadata.white.name = name;
-          if (rating) metadata.white.rating = rating;
-        } else {
-          metadata.black.name = name;
-          if (rating) metadata.black.rating = rating;
-        }
-      }
+  // Detect player color from clock classes (clock-white / clock-black on bottom)
+  const bottomClock = document.querySelector('.clock-bottom');
+  if (bottomClock) {
+    if (bottomClock.classList.contains('clock-black')) {
+      metadata.playerColor = 'black';
+    } else if (bottomClock.classList.contains('clock-white')) {
+      metadata.playerColor = 'white';
     }
   }
 
+  // Alternatively, check the board element for flipped state
+  const boardEl = document.querySelector('wc-chess-board, chess-board');
+  if (boardEl) {
+    // chess.com's board has a "flipped" attribute or class when playing black
+    if (boardEl.hasAttribute('flipped') || boardEl.classList.contains('flipped')) {
+      metadata.playerColor = 'black';
+    }
+  }
+
+  // Extract player names - bottom is me, top is opponent
+  const isBlack = metadata.playerColor === 'black';
+
+  if (bottomPlayer) {
+    const name = bottomPlayer.querySelector('[data-cy="user-tagline-username"], .cc-user-username-component');
+    const rating = bottomPlayer.querySelector('[data-cy="user-tagline-rating"]');
+    const key = isBlack ? 'black' : 'white';
+    if (name) metadata[key].name = name.textContent?.trim();
+    if (rating) metadata[key].rating = rating.textContent?.replace(/[()]/g, '').trim();
+  }
+
+  if (topPlayer) {
+    const name = topPlayer.querySelector('[data-cy="user-tagline-username"], .cc-user-username-component');
+    const rating = topPlayer.querySelector('[data-cy="user-tagline-rating"]');
+    const key = isBlack ? 'white' : 'black';
+    if (name) metadata[key].name = name.textContent?.trim();
+    if (rating) metadata[key].rating = rating.textContent?.replace(/[()]/g, '').trim();
+  }
+
+  console.log('chess.com.puter: detected playerColor:', metadata.playerColor);
   return metadata;
 }
 
 // --- Clock Observer ---
 
-/**
- * Start observing chess.com clocks for the live helper.
- * Only reads displayed time values - no board positions or moves.
- * @param {(data: {whiteTime: string, blackTime: string, playerColor: string}) => void} callback
- * @returns {() => void} cleanup function
- */
 export function startClockObserver(callback) {
   const interval = setInterval(() => {
-    const clocks = document.querySelectorAll('.clock-component, .clock-time-monospace, [data-cy="clock"]');
+    const clocks = document.querySelectorAll('[data-cy="clock-time"]');
     if (clocks.length >= 2) {
-      // Bottom clock is the player's clock
       const times = Array.from(clocks).map((c) => c.textContent?.trim() || '?');
       callback({
-        whiteTime: times[1] || '?', // Bottom clock (usually player)
-        blackTime: times[0] || '?', // Top clock (usually opponent)
-        playerColor: 'white', // Approximate; could be refined
+        whiteTime: times[1] || '?',
+        blackTime: times[0] || '?',
+        playerColor: 'white',
       });
     }
   }, 1000);
@@ -244,11 +292,7 @@ function waitForElement(selectors, timeout) {
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
-
-    setTimeout(() => {
-      observer.disconnect();
-      resolve(null);
-    }, timeout);
+    setTimeout(() => { observer.disconnect(); resolve(null); }, timeout);
   });
 }
 
@@ -257,7 +301,6 @@ function closeModal() {
     '.cc-modal-header-close',
     '.ui_outside-close-icon',
     '[aria-label="Close"]',
-    '.icon-font-chess.x',
   ]);
   if (closeBtn) closeBtn.click();
 }
@@ -269,9 +312,9 @@ function isChessMove(text) {
 }
 
 function findGameResult() {
-  // Look for result text on the page
   const resultPatterns = ['1-0', '0-1', '1/2-1/2', '½-½'];
-  const resultEls = document.querySelectorAll('.game-result, .result, [data-result]');
+  // Check data-cy result elements and general result classes
+  const resultEls = document.querySelectorAll('.game-result, .result, [data-result], [data-cy*="result"]');
   for (const el of resultEls) {
     const text = el.textContent?.trim();
     if (text && resultPatterns.some((p) => text.includes(p))) {

@@ -21,6 +21,17 @@
 
     <!-- Analysis mode (completed games) -->
     <section id="analysis-section" hidden>
+      <!-- Progress bar for full game analysis -->
+      <div id="progress-container" hidden>
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-bar"></div>
+        </div>
+        <span class="progress-text" id="progress-text">Analyzing...</span>
+      </div>
+
+      <!-- Analysis summary (blunders/mistakes/etc counts) -->
+      <div id="analysis-summary" hidden></div>
+
       <div class="board-row">
         <div id="eval-bar"></div>
         <div id="board-container"></div>

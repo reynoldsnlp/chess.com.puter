@@ -73,6 +73,88 @@ body {
   position: relative;
 }
 
+/* --- Progress bar --- */
+#progress-container {
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.progress-track {
+  height: 6px;
+  background: var(--bg-primary);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.2s;
+}
+
+.progress-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* --- Analysis summary --- */
+#analysis-summary {
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.summary-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.summary-item {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.summary-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: bold;
+  color: white;
+}
+
+.summary-best .summary-icon { background: #96bc4b; }
+.summary-excellent .summary-icon { background: #96bc4b; }
+.summary-good .summary-icon { background: #97af8b; }
+.summary-book .summary-icon { background: #a88865; }
+.summary-forced .summary-icon { background: #999; }
+.summary-inaccuracy .summary-icon { background: #f7c631; color: #1a1a1a; }
+.summary-mistake .summary-icon { background: #e69a28; }
+.summary-blunder .summary-icon { background: #ca3431; }
+
+.summary-best { color: #96bc4b; }
+.summary-excellent { color: #96bc4b; }
+.summary-good { color: #97af8b; }
+.summary-book { color: #a88865; }
+.summary-forced { color: #999; }
+.summary-inaccuracy { color: #f7c631; }
+.summary-mistake { color: #e69a28; }
+.summary-blunder { color: #ca3431; }
+
 /* --- Eval bar --- */
 #eval-bar {
   width: 22px;
@@ -97,6 +179,8 @@ body {
   transition: height 0.3s ease;
 }
 
+/* eval bar flipping handled via JS transform: rotate(180deg) */
+
 .eval-bar-label {
   position: absolute;
   width: 100%;
@@ -119,6 +203,11 @@ body {
 #board-container .cg-wrap {
   width: 100% !important;
   height: 100% !important;
+}
+
+/* Last move highlight: subtle greenish-yellow */
+#board-container .cg-wrap square.last-move {
+  background-color: rgba(180, 210, 80, 0.3) !important;
 }
 
 /* --- Move list --- */
@@ -160,6 +249,31 @@ body {
   background: var(--accent);
   color: white;
 }
+
+/* Move classification colors (chess.com expected points model) */
+.move.move-best { color: #96bc4b; }
+.move.move-best.active { background: #96bc4b; color: white; }
+
+.move.move-excellent { color: #96bc4b; }
+.move.move-excellent.active { background: #96bc4b; color: white; }
+
+.move.move-good { color: #97af8b; }
+.move.move-good.active { background: #97af8b; color: white; }
+
+.move.move-book { color: #a88865; }
+.move.move-book.active { background: #a88865; color: white; }
+
+.move.move-forced { color: #999; }
+.move.move-forced.active { background: #666; color: white; }
+
+.move.move-inaccuracy { color: #f7c631; }
+.move.move-inaccuracy.active { background: #f7c631; color: #1a1a1a; }
+
+.move.move-mistake { color: #e69a28; }
+.move.move-mistake.active { background: #e69a28; color: white; }
+
+.move.move-blunder { color: #ca3431; }
+.move.move-blunder.active { background: #ca3431; color: white; }
 
 /* --- Controls --- */
 #control-bar {

@@ -10,10 +10,20 @@ export function createBoard(container) {
     selectable: { enabled: false },
     coordinates: true,
     animation: { enabled: true, duration: 200 },
+    highlight: { lastMove: true, check: true },
+    drawable: {
+      enabled: false, // disable user drawing, we only use auto shapes
+      visible: true,
+      brushes: {
+        green: { key: 'green', color: '#15781B', opacity: 0.4, lineWidth: 10 },
+        red: { key: 'red', color: '#882020', opacity: 0.4, lineWidth: 10 },
+        blue: { key: 'blue', color: '#003088', opacity: 0.4, lineWidth: 10 },
+        yellow: { key: 'yellow', color: '#e6a000', opacity: 0.4, lineWidth: 10 },
+      },
+    },
   });
 
   return {
-    /** Set the board position from a FEN string */
     setPosition(fen) {
       const parts = fen.split(' ');
       cg.set({
@@ -23,27 +33,20 @@ export function createBoard(container) {
       });
     },
 
-    /** Highlight the last move (from/to squares) */
     setLastMove(from, to) {
       cg.set({ lastMove: from && to ? [from, to] : undefined });
     },
 
-    /** Flip the board orientation */
-    flip() {
-      cg.toggleOrientation();
-    },
+    flip() { cg.toggleOrientation(); },
 
-    /** Set the board orientation */
-    setOrientation(color) {
-      cg.set({ orientation: color });
-    },
+    setOrientation(color) { cg.set({ orientation: color }); },
 
-    /** Get the chessground instance (for advanced use) */
+    setAutoShapes(shapes) { cg.setAutoShapes(shapes); },
+
+    clearAutoShapes() { cg.setAutoShapes([]); },
+
     instance: cg,
 
-    /** Clean up */
-    destroy() {
-      cg.destroy();
-    },
+    destroy() { cg.destroy(); },
   };
 }

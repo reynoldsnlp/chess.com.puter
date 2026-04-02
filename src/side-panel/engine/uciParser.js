@@ -2,15 +2,13 @@
 
 /**
  * Parse a UCI "info" line.
- * Example: "info depth 20 seldepth 30 multipv 1 score cp 35 nodes 1234567 nps 1200000 time 1029 pv e2e4 e7e5 g1f3"
+ * Handles modern Stockfish output with WDL: "score wdl 500 450 50 cp 35"
+ * as well as classic format: "score cp 35"
  * @param {string} line
  * @returns {object|null}
  */
 export function parseInfoLine(line) {
-  if (!line.startsWith('info ')) return null;
-
-  // Skip "info string" messages
-  if (line.startsWith('info string')) return null;
+  if (!line.startsWith('info ') || line.startsWith('info string')) return null;
 
   const result = {
     depth: 0,
@@ -38,11 +36,25 @@ export function parseInfoLine(line) {
         result.multipv = parseInt(tokens[++i]) || 1;
         break;
       case 'score':
+        // Scan ahead for cp/mate/wdl tokens within the score section.
+        // Modern Stockfish may output: "score wdl W D L cp C" or "score cp C wdl W D L"
         i++;
-        if (tokens[i] === 'cp') {
-          result.score = { type: 'cp', value: parseInt(tokens[++i]) || 0 };
-        } else if (tokens[i] === 'mate') {
-          result.score = { type: 'mate', value: parseInt(tokens[++i]) || 0 };
+        while (i < tokens.length) {
+          if (tokens[i] === 'cp') {
+            result.score = { type: 'cp', value: parseInt(tokens[++i]) || 0 };
+          } else if (tokens[i] === 'mate') {
+            result.score = { type: 'mate', value: parseInt(tokens[++i]) || 0 };
+          } else if (tokens[i] === 'wdl') {
+            // Skip the 3 WDL values
+            i += 3;
+          } else if (tokens[i] === 'lowerbound' || tokens[i] === 'upperbound') {
+            // Skip bound markers
+          } else {
+            // Hit a non-score token — back up and let the outer loop handle it
+            i--;
+            break;
+          }
+          i++;
         }
         break;
       case 'nodes':
@@ -55,9 +67,8 @@ export function parseInfoLine(line) {
         result.time = parseInt(tokens[++i]) || 0;
         break;
       case 'pv':
-        // Everything after "pv" is the principal variation
         result.pv = tokens.slice(i + 1);
-        i = tokens.length; // End parsing
+        i = tokens.length;
         break;
       default:
         break;
@@ -65,14 +76,12 @@ export function parseInfoLine(line) {
     i++;
   }
 
-  // Only return if we have meaningful data
   if (result.depth > 0 && result.score) return result;
   return null;
 }
 
 /**
  * Parse a UCI "bestmove" line.
- * Example: "bestmove e2e4 ponder e7e5"
  * @param {string} line
  * @returns {{ bestmove: string, ponder: string|null }|null}
  */
