@@ -26,6 +26,7 @@ export function createEvalChart(container) {
   let onClickPly = null;
   let onHoverPly = null;
   let flipped = false;
+  let myColor = 'white';
 
   // Cached layout values (set during render)
   let cachedPoints = [];
@@ -110,8 +111,11 @@ export function createEvalChart(container) {
     for (let i = 1; i < smoothed.length; i++) ctx.lineTo(smoothed[i].x, smoothed[i].y);
     ctx.stroke();
 
-    // Classification markers (negative only)
+    // Classification markers (my negative moves only)
     for (let i = 0; i < data.length; i++) {
+      // Only show markers for my moves
+      const isMyPly = myColor === 'white' ? i % 2 === 1 : i % 2 === 0;
+      if (!isMyPly) continue;
       const cls = data[i].classification;
       if (!cls || !CLASS_COLORS[cls] || cls === 'best' || cls === 'excellent' || cls === 'good' || cls === 'book' || cls === 'forced') continue;
       ctx.fillStyle = CLASS_COLORS[cls];
@@ -211,6 +215,8 @@ export function createEvalChart(container) {
     setCurrentPly(ply) { currentPly = ply; render(); },
 
     setFlipped(f) { flipped = f; render(); },
+
+    setPlayerColor(color) { myColor = color; render(); },
 
     onClick(fn) { onClickPly = fn; },
 

@@ -155,7 +155,7 @@ async function handleLichessPage() {
 
 // Listen for requests from the side panel (via service worker)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === MSG.REQUEST_GAME) {
+  if (message.type === MSG.REQUEST_GAME || message.type === MSG.SCAN_PAGE) {
     const detection = detectPlatform();
     if (detection?.platform === PLATFORM.CHESSCOM) handleChessComPage();
     else if (detection?.platform === PLATFORM.LICHESS) handleLichessPage();

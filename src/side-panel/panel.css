@@ -15,6 +15,8 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+.hidden { display: none !important; }
+
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
@@ -36,31 +38,152 @@ body {
   height: 100%;
 }
 
-/* --- Header --- */
+/* --- Header (game loaded) --- */
 #header {
-  padding: 6px 10px;
+  padding: 5px 10px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-shrink: 0;
-  gap: 8px;
+  gap: 12px;
 }
 
-#header h1 {
-  font-size: 13px;
-  font-weight: 600;
+.header-link {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.header-link:hover { color: var(--text-primary); }
+
+.header-close { color: var(--danger); }
+.header-close:hover { color: #f55; }
+
+/* --- Lobby --- */
+#lobby {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px 16px;
+}
+
+.lobby-title {
+  font-size: 18px;
+  font-weight: 700;
   color: var(--accent);
-  white-space: nowrap;
 }
 
-/* --- Status message --- */
-#status-message {
+.lobby-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 280px;
+}
+
+.lobby-btn {
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  text-align: center;
+}
+
+.lobby-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+}
+
+.lobby-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.lobby-import-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.lobby-import { flex: 1; }
+
+.lobby-refresh {
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.lobby-refresh:hover:not(:disabled) { background: var(--bg-tertiary); }
+.lobby-refresh:disabled { opacity: 0.4; }
+
+.lobby-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.lobby-status {
+  font-size: 12px;
   color: var(--text-secondary);
   text-align: center;
-  padding: 32px 16px;
-  flex: 1;
+  min-height: 1.4em;
+}
+
+/* --- PGN Input (lobby) --- */
+#pgn-input-area {
+  width: 100%;
+  max-width: 320px;
+}
+
+#pgn-input-area textarea {
+  width: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 12px;
+  font-family: monospace;
+  resize: vertical;
+}
+
+.pgn-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.pgn-warning {
+  color: var(--warning);
+  font-size: 11px;
 }
 
 /* --- Analysis section --- */
@@ -432,42 +555,7 @@ body {
   height: 100%;
 }
 
-/* --- PGN Input --- */
-.pgn-input-section {
-  flex-shrink: 0;
-}
-
-.pgn-input-toggle {
-  background: none;
-  border: none;
-  color: var(--accent);
-  cursor: pointer;
-  font-size: 12px;
-  padding: 2px 4px;
-}
-
-.pgn-input-toggle:hover {
-  color: var(--accent-hover);
-  text-decoration: underline;
-}
-
-.pgn-input-body {
-  padding: 8px;
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border);
-}
-
-.pgn-input-body textarea {
-  width: 100%;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 6px;
-  font-size: 12px;
-  font-family: monospace;
-  resize: vertical;
-}
+/* (old PGN input styles removed - now in lobby section) */
 
 .pgn-input-actions {
   display: flex;

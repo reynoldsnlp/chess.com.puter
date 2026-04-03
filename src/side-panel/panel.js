@@ -1,6 +1,5 @@
 // chess.com.puter side panel entry point.
-// Full game analysis with chess.com Expected Points classification.
-// UI focused on the detected player's moves.
+// Manual import flow: scan page → activate import button → user clicks to load.
 
 import { MSG } from '../shared/messages.js';
 import { isGameComplete } from '../shared/gameStatus.js';
@@ -10,13 +9,11 @@ import { createMoveList } from './components/moveList.js';
 import { createEvalBar } from './components/evalBar.js';
 import { createEngineLines } from './components/engineLines.js';
 import { createControls } from './components/controls.js';
-import { createPgnInput } from './components/pgnInput.js';
 import { createLiveHelper } from './live-helper/liveHelper.js';
 import { createStockfishController } from './engine/stockfishController.js';
 import { analyzeGame, gameAccuracy } from './engine/gameAnalyzer.js';
 import { createEvalChart } from './components/evalChart.js';
 
-// Classification symbols
 const CLASS_SYMBOL = {
   best: '★', excellent: '+', good: '✔', book: '📖', forced: '→',
   inaccuracy: '?!', mistake: '?', blunder: '??',
@@ -24,18 +21,35 @@ const CLASS_SYMBOL = {
 
 // --- State ---
 let currentPgn = null;
-let currentMode = 'idle';
+let currentMode = 'lobby'; // 'lobby' | 'analysis' | 'live_helper'
 let engine = null;
 let currentAnalysisFen = null;
 let gameClassifications = null;
 let fullAnalysisCancelled = false;
 let playerColor = 'white';
-let pendingGameData = null; // stores game data received before panel is ready
+let pendingScanData = null; // game data from last scan (not yet imported)
 
-// --- DOM References ---
+// --- DOM: Lobby ---
+const lobby = document.getElementById('lobby');
+const lobbyImportBtn = document.getElementById('lobby-import');
+const lobbyPasteBtn = document.getElementById('lobby-paste');
+const lobbyRefreshBtn = document.getElementById('lobby-refresh');
+const lobbySpinner = document.getElementById('lobby-spinner');
+const lobbyStatus = document.getElementById('lobby-status');
+const pgnInputArea = document.getElementById('pgn-input-area');
+const pgnTextarea = document.getElementById('pgn-textarea');
+const pgnAnalyzeBtn = document.getElementById('pgn-analyze');
+const pgnCancelBtn = document.getElementById('pgn-cancel');
+const pgnWarning = document.getElementById('pgn-warning');
+
+// --- DOM: Header (game loaded) ---
+const header = document.getElementById('header');
+const btnPastePgn = document.getElementById('btn-paste-pgn');
+const btnCloseGame = document.getElementById('btn-close-game');
+
+// --- DOM: Analysis ---
 const analysisSection = document.getElementById('analysis-section');
 const liveSection = document.getElementById('live-section');
-const statusMessage = document.getElementById('status-message');
 const statusBar = document.getElementById('status-bar');
 const progressContainer = document.getElementById('progress-container');
 const progressBar = document.getElementById('progress-bar');
@@ -49,27 +63,14 @@ const evalBar = createEvalBar(document.getElementById('eval-bar'));
 const moveList = createMoveList(document.getElementById('move-list'), (ply, fen, classification) => {
   board.setPosition(fen);
   currentAnalysisFen = fen;
-
-  // Highlight from-to squares (with castling normalization)
   if (ply > 0) {
     const pos = moveList.getPosition(ply);
-    if (pos?.uci) {
-      const sq = uciSquares(pos.uci);
-      board.setLastMove(sq.from, sq.to);
-    }
-  } else {
-    board.setLastMove(null, null);
-  }
-
+    if (pos?.uci) { const sq = uciSquares(pos.uci); board.setLastMove(sq.from, sq.to); }
+  } else { board.setLastMove(null, null); }
   showBoardAnnotations(ply, classification);
   evalChart.setCurrentPly(ply);
-
-  if (classification) {
-    evalBar.update({ type: 'cp', value: classification.evalAfter });
-  } else {
-    evalBar.reset();
-  }
-
+  if (classification) evalBar.update({ type: 'cp', value: classification.evalAfter });
+  else evalBar.reset();
   engineLines.clear();
   engineLines.setFen(fen);
   analyzePosition(fen);
@@ -78,28 +79,20 @@ const moveList = createMoveList(document.getElementById('move-list'), (ply, fen,
 const engineLines = createEngineLines(document.getElementById('engine-lines'));
 
 const controls = createControls(document.getElementById('control-bar'), {
-  onDepthChange: (depth) => {
-    const pos = moveList.getPosition(moveList.getCurrentPly());
-    if (pos && engine?.isReady()) { engineLines.clear(); engine.analyze(pos.fen, depth); }
-  },
-  onMultiPvChange: (multiPv) => {
-    if (engine?.isReady()) {
-      engine.setMultiPV(multiPv);
-      const pos = moveList.getPosition(moveList.getCurrentPly());
-      if (pos) { engineLines.clear(); engine.analyze(pos.fen, controls.getDepth()); }
-    }
-  },
+  onDepthChange: (d) => { const p = moveList.getPosition(moveList.getCurrentPly()); if (p && engine?.isReady()) { engineLines.clear(); engine.analyze(p.fen, d); } },
+  onMultiPvChange: (n) => { if (engine?.isReady()) { engine.setMultiPV(n); const p = moveList.getPosition(moveList.getCurrentPly()); if (p) { engineLines.clear(); engine.analyze(p.fen, controls.getDepth()); } } },
   onFlip: () => {
     board.flip();
     playerColor = playerColor === 'white' ? 'black' : 'white';
     evalBar.setFlipped(playerColor === 'black');
     evalChart.setFlipped(playerColor === 'black');
+    evalChart.setPlayerColor(playerColor);
     moveList.setPlayerColor(playerColor);
     if (gameClassifications) showAnalysisSummary(gameClassifications);
   },
-  onEngineToggle: (enabled) => {
-    if (!enabled && engine) { engine.stop(); engineLines.clear(); evalBar.reset(); board.clearAutoShapes(); }
-    else if (enabled) { const pos = moveList.getPosition(moveList.getCurrentPly()); if (pos) analyzePosition(pos.fen); }
+  onEngineToggle: (on) => {
+    if (!on && engine) { engine.stop(); engineLines.clear(); evalBar.reset(); board.clearAutoShapes(); }
+    else if (on) { const p = moveList.getPosition(moveList.getCurrentPly()); if (p) analyzePosition(p.fen); }
   },
   onGoStart: () => moveList.goToStart(),
   onGoBack: () => moveList.goBack(),
@@ -112,19 +105,18 @@ const evalChart = createEvalChart(document.getElementById('eval-chart'));
 evalChart.onClick((ply) => moveList.goToMove(ply));
 evalChart.onHover((ply) => moveList.setHoverPly(ply));
 
-const pgnInput = createPgnInput(document.getElementById('pgn-input'), (pgn) => {
-  loadGame(pgn, 'white');
-});
-
 const liveHelper = createLiveHelper(document.getElementById('live-section'));
 
-// --- Mode Switching ---
+// ============================================================
+// LOBBY UI LOGIC
+// ============================================================
 
 function setMode(mode) {
   currentMode = mode;
-  if (analysisSection) analysisSection.hidden = mode !== 'analysis';
-  if (liveSection) liveSection.hidden = mode !== 'live_helper';
-  if (statusMessage) statusMessage.hidden = mode !== 'idle';
+  lobby.classList.toggle('hidden', mode !== 'lobby');
+  header.classList.toggle('hidden', mode === 'lobby');
+  analysisSection.classList.toggle('hidden', mode !== 'analysis');
+  liveSection.classList.toggle('hidden', mode !== 'live_helper');
   if (statusBar) {
     statusBar.querySelector('.status-text').textContent =
       mode === 'analysis' ? 'Free the fish!' :
@@ -132,17 +124,154 @@ function setMode(mode) {
   }
 }
 
-// --- Player detection ---
+// Paste PGN (lobby)
+lobbyPasteBtn.addEventListener('click', () => {
+  pgnInputArea.classList.remove('hidden');
+  pgnTextarea.focus();
+});
+
+pgnCancelBtn.addEventListener('click', () => {
+  pgnInputArea.classList.add('hidden');
+  pgnWarning.classList.add('hidden');
+  pgnTextarea.value = '';
+});
+
+pgnAnalyzeBtn.addEventListener('click', () => {
+  const pgn = pgnTextarea.value.trim();
+  if (!pgn) { pgnWarning.textContent = 'Please paste a PGN.'; pgnWarning.classList.remove('hidden'); return; }
+  if (!isGameComplete(pgn)) { pgnWarning.textContent = 'Game appears in progress. Only completed games can be analyzed.'; pgnWarning.classList.remove('hidden'); return; }
+  pgnWarning.classList.add('hidden');
+  pgnInputArea.classList.add('hidden');
+  loadGame(pgn, 'white');
+});
+
+// Paste PGN (header, when game is loaded)
+btnPastePgn.addEventListener('click', (e) => {
+  e.preventDefault();
+  closeGame();
+  pgnInputArea.classList.remove('hidden');
+  pgnTextarea.focus();
+});
+
+// Import from page
+lobbyImportBtn.addEventListener('click', () => {
+  if (!pendingScanData?.pgn) return;
+  const color = pendingScanData.metadata?.playerColor || 'white';
+  loadGame(pendingScanData.pgn, color);
+});
+
+// Refresh / scan page
+lobbyRefreshBtn.addEventListener('click', () => scanPage());
+
+// Close game → return to lobby
+btnCloseGame.addEventListener('click', (e) => {
+  e.preventDefault();
+  closeGame();
+});
+
+function closeGame() {
+  fullAnalysisCancelled = true;
+  if (engine) engine.stop();
+  currentPgn = null;
+  gameClassifications = null;
+  currentAnalysisFen = null;
+
+  // Clear all analysis components
+  engineLines.clear();
+  evalBar.reset();
+  board.clearAutoShapes();
+  board.setLastMove(null, null);
+  board.setPosition('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+  moveList.loadPgn(null);
+  evalChart.setData([], []);
+  if (analysisSummary) { analysisSummary.innerHTML = ''; analysisSummary.classList.add('hidden'); }
+  if (progressContainer) progressContainer.classList.add('hidden');
+
+  setMode('lobby');
+  // Re-scan to see if there's still a game on the page
+  scanPage();
+}
+
+// ============================================================
+// PAGE SCANNING
+// ============================================================
+
+let scanning = false;
+let scanResolve = null; // resolve function for the scan promise
+
+async function scanPage() {
+  if (scanning) return;
+  scanning = true;
+  lobbySpinner.classList.remove('hidden');
+  lobbyRefreshBtn.disabled = true;
+  lobbyStatus.textContent = 'Scanning...';
+  pendingScanData = null;
+  lobbyImportBtn.disabled = true;
+
+  // Create a promise that resolves when receiveScanResult is called
+  const scanComplete = new Promise(r => { scanResolve = r; });
+  const timeout = new Promise(r => setTimeout(() => r('timeout'), 5000));
+  const minTime = new Promise(r => setTimeout(r, 1000));
+
+  // Tell content script to scan (SW will re-inject if stale)
+  try { chrome.runtime.sendMessage({ type: MSG.SCAN_PAGE }); } catch (e) {}
+
+  // Also check cached data (in case content script already reported)
+  try {
+    const resp = await chrome.runtime.sendMessage({ type: MSG.REQUEST_GAME });
+    if (resp?.payload?.mode !== 'idle') receiveScanResult(resp.payload);
+  } catch (e) {}
+
+  // Wait for either: scan result arrives, or 5s timeout
+  await Promise.race([scanComplete, timeout]);
+  // Ensure spinner shows for at least 1s
+  await minTime;
+
+  lobbySpinner.classList.add('hidden');
+  lobbyRefreshBtn.disabled = false;
+  scanning = false;
+  scanResolve = null;
+
+  if (!pendingScanData?.pgn && lobbyStatus.textContent === 'Scanning...') {
+    lobbyStatus.textContent = 'No completed game found on this page.';
+  }
+}
+
+function receiveScanResult(payload) {
+  if (currentMode !== 'lobby') return;
+  const { mode, pgn, metadata } = payload;
+  if (mode === 'analysis' && pgn) {
+    pendingScanData = { pgn, metadata };
+    lobbyImportBtn.disabled = false;
+    lobbyStatus.textContent = 'Completed game found! Click Import to analyze.';
+  } else if (mode === 'live_helper') {
+    pendingScanData = null;
+    lobbyImportBtn.disabled = true;
+    lobbyStatus.textContent = 'Game in progress. Analysis available after the game ends.';
+  } else {
+    pendingScanData = null;
+    lobbyImportBtn.disabled = true;
+    lobbyStatus.textContent = 'No completed game found on this page.';
+  }
+  // Signal that scan is complete (stop spinner)
+  if (scanResolve) scanResolve();
+}
+
+// ============================================================
+// PLAYER DETECTION
+// ============================================================
 
 function isMyMove(ply) {
   return playerColor === 'white' ? ply % 2 === 1 : ply % 2 === 0;
 }
 
-// --- Load a completed game ---
+// ============================================================
+// LOAD & ANALYZE GAME
+// ============================================================
 
 async function loadGame(pgn, detectedColor) {
   if (!pgn) return;
-  if (!isGameComplete(pgn)) { setMode('live_helper'); return; }
+  if (!isGameComplete(pgn)) return;
 
   fullAnalysisCancelled = true;
   currentPgn = pgn;
@@ -155,33 +284,25 @@ async function loadGame(pgn, detectedColor) {
   board.setOrientation(playerColor);
   evalBar.setFlipped(playerColor === 'black');
   evalChart.setFlipped(playerColor === 'black');
+  evalChart.setPlayerColor(playerColor);
 
-  // Auto-run full game analysis
   await runFullGameAnalysis();
 }
 
-// --- Full Game Analysis ---
-
 async function runFullGameAnalysis() {
-  // Ensure engine is initialized
   if (!engine) await initEngine();
-  // Retry if engine didn't initialize (e.g., WASM still loading)
   if (!engine?.isReady()) {
-    console.log('chess.com.puter: engine not ready, retrying in 2s...');
     await new Promise(r => setTimeout(r, 2000));
     if (!engine) await initEngine();
-    if (!engine?.isReady()) {
-      console.error('chess.com.puter: engine failed to initialize');
-      return;
-    }
+    if (!engine?.isReady()) return;
   }
 
   const positions = moveList.getAllPositions();
   if (positions.length < 2) return;
 
   fullAnalysisCancelled = false;
-  if (progressContainer) progressContainer.hidden = false;
-  if (analysisSummary) analysisSummary.hidden = true;
+  if (progressContainer) progressContainer.classList.remove('hidden');
+  if (analysisSummary) analysisSummary.classList.add('hidden');
 
   gameClassifications = await analyzeGame(positions, engine, {
     depth: 16,
@@ -190,7 +311,7 @@ async function runFullGameAnalysis() {
       if (progressText) progressText.textContent = `Analyzing: ${current}/${total} positions...`;
     },
     onComplete(classifications) {
-      if (progressContainer) progressContainer.hidden = true;
+      if (progressContainer) progressContainer.classList.add('hidden');
       moveList.setClassifications(classifications);
       gameClassifications = classifications;
       showAnalysisSummary(classifications);
@@ -204,18 +325,18 @@ async function runFullGameAnalysis() {
   });
 }
 
-// --- Analysis Summary (my moves only, with symbols) ---
+// ============================================================
+// ANALYSIS SUMMARY
+// ============================================================
 
 function showAnalysisSummary(classifications) {
   if (!analysisSummary) return;
-
   const counts = { best: 0, excellent: 0, good: 0, book: 0, forced: 0, inaccuracy: 0, mistake: 0, blunder: 0 };
   for (let ply = 1; ply < classifications.length; ply++) {
     if (!isMyMove(ply)) continue;
     const cls = classifications[ply];
     if (cls && counts[cls.classification] !== undefined) counts[cls.classification]++;
   }
-
   const items = [
     { key: 'best', label: CLASS_SYMBOL.best },
     { key: 'excellent', label: CLASS_SYMBOL.excellent },
@@ -224,32 +345,27 @@ function showAnalysisSummary(classifications) {
     { key: 'mistake', label: CLASS_SYMBOL.mistake },
     { key: 'blunder', label: CLASS_SYMBOL.blunder },
   ];
-
   const accuracy = gameAccuracy(classifications, isMyMove);
-
   analysisSummary.innerHTML = `<div class="summary-row">
     <span class="summary-item summary-accuracy" title="Accuracy (Lichess formula)">${accuracy.toFixed(1)}%</span>
     ${items.map(({ key, label }) =>
       `<span class="summary-item summary-${key}" title="${key}"><span class="summary-icon">${label}</span> ${counts[key]}</span>`
     ).join('')}
   </div>`;
-  analysisSummary.hidden = false;
+  analysisSummary.classList.remove('hidden');
 }
 
-// --- Board Annotations (arrows + classification icon) ---
+// ============================================================
+// BOARD ANNOTATIONS
+// ============================================================
 
 function showBoardAnnotations(ply, classification) {
   if (!controls.isEngineOn()) { board.clearAutoShapes(); return; }
-
   const shapes = [];
-
-  // Green arrow for engine's best move
   if (classification?.engineBestMove?.length >= 4) {
     const sq = uciSquares(classification.engineBestMove);
     shapes.push({ orig: sq.from, dest: sq.to, brush: 'green' });
   }
-
-  // Classification icon on the king's destination square (handles castling)
   if (ply > 0 && classification) {
     const pos = moveList.getPosition(ply);
     if (pos?.uci) {
@@ -257,23 +373,15 @@ function showBoardAnnotations(ply, classification) {
       const symbol = CLASS_SYMBOL[classification.classification];
       const color = classificationColor(classification.classification);
       if (symbol && sq.to) {
-        shapes.push({
-          orig: sq.to,
-          customSvg: { html: makeClassificationSvg(symbol, color) },
-        });
+        shapes.push({ orig: sq.to, customSvg: { html: makeClassificationSvg(symbol, color) } });
       }
     }
   }
-
   board.setAutoShapes(shapes);
 }
 
 function classificationColor(cls) {
-  const colors = {
-    best: '#96bc4b', excellent: '#96bc4b', good: '#97af8b', book: '#a88865',
-    forced: '#999', inaccuracy: '#f7c631', mistake: '#e69a28', blunder: '#ca3431',
-  };
-  return colors[cls] || '#999';
+  return { best: '#96bc4b', excellent: '#96bc4b', good: '#97af8b', book: '#a88865', forced: '#999', inaccuracy: '#f7c631', mistake: '#e69a28', blunder: '#ca3431' }[cls] || '#999';
 }
 
 function makeClassificationSvg(symbol, color) {
@@ -284,11 +392,12 @@ function makeClassificationSvg(symbol, color) {
   </svg>`;
 }
 
-// --- Engine Initialization ---
+// ============================================================
+// ENGINE
+// ============================================================
 
 async function initEngine() {
   if (engine) return;
-
   engine = createStockfishController({
     onInfo(info) {
       const blackToMove = currentAnalysisFen?.split(' ')[1] === 'b';
@@ -308,12 +417,9 @@ async function initEngine() {
       else el.textContent = status.text;
     },
   });
-
   await engine.init();
   if (engine.isReady()) engine.setMultiPV(controls.getMultiPv());
 }
-
-// --- Live Engine Analysis ---
 
 async function analyzePosition(fen) {
   if (!controls.isEngineOn() || currentMode !== 'analysis') return;
@@ -323,60 +429,28 @@ async function analyzePosition(fen) {
   if (engine?.isReady()) engine.analyze(fen, controls.getDepth());
 }
 
-// --- Message Handling ---
+// ============================================================
+// MESSAGE HANDLING
+// ============================================================
 
 chrome.runtime.onMessage.addListener((message) => {
-  if (message.type === MSG.GAME_DATA) handleGameData(message.payload);
-  else if (message.type === MSG.CLOCK_UPDATE && currentMode === 'live_helper') liveHelper.updateClocks(message.payload);
+  if (message.type === MSG.GAME_DATA) {
+    // If we're in the lobby, update scan result. Never auto-load.
+    if (currentMode === 'lobby') receiveScanResult(message.payload);
+  } else if (message.type === MSG.CLOCK_UPDATE && currentMode === 'live_helper') {
+    liveHelper.updateClocks(message.payload);
+  }
 });
 
-function handleGameData(payload) {
-  const { mode, pgn, metadata } = payload;
-  if (mode === 'analysis' && pgn) {
-    const color = metadata?.playerColor || 'white';
-    loadGame(pgn, color);
-  } else if (mode === 'live_helper') {
-    setMode('live_helper');
-    liveHelper.setMetadata(metadata);
-  } else {
-    setMode('idle');
-  }
-}
+// ============================================================
+// STARTUP
+// ============================================================
 
-// --- Startup (robust initialization with retry) ---
+setMode('lobby');
+// Immediately scan the current page
+scanPage();
 
-async function startup() {
-  // Request game data from service worker
-  try {
-    const response = await chrome.runtime.sendMessage({ type: MSG.REQUEST_GAME });
-    if (response?.payload) {
-      handleGameData(response.payload);
-      return;
-    }
-  } catch (e) {
-    // Service worker might not be ready yet
-  }
-
-  // Retry after a delay — content script or service worker may not be ready
-  setTimeout(async () => {
-    if (currentMode !== 'idle') return; // Already loaded something
-    try {
-      const response = await chrome.runtime.sendMessage({ type: MSG.REQUEST_GAME });
-      if (response?.payload) handleGameData(response.payload);
-    } catch (e) {
-      // Still not ready, but incoming GAME_DATA messages will handle it
-    }
-  }, 2000);
-
-  // Another retry at 5s for slow-loading pages
-  setTimeout(async () => {
-    if (currentMode !== 'idle') return;
-    try {
-      const response = await chrome.runtime.sendMessage({ type: MSG.REQUEST_GAME });
-      if (response?.payload) handleGameData(response.payload);
-    } catch (e) {}
-  }, 5000);
-}
-
-setMode('idle');
-startup();
+// Also scan when the tab changes (user switches tabs)
+chrome.tabs?.onActivated?.addListener?.(() => {
+  if (currentMode === 'lobby') scanPage();
+});

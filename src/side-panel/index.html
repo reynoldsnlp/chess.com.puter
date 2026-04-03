@@ -11,27 +11,43 @@
 </head>
 <body>
   <div id="app">
-    <header id="header">
-      <h1>chess.com.puter</h1>
-      <div id="pgn-input"></div>
+    <!-- Header: shown when a game is loaded -->
+    <header id="header" class="hidden">
+      <a href="#" id="btn-paste-pgn" class="header-link">Paste PGN</a>
+      <a href="#" id="btn-close-game" class="header-link header-close">&times; Close game</a>
     </header>
 
-    <!-- Idle state message -->
-    <p id="status-message">Open a chess.com game to analyze it, or paste PGN.</p>
+    <!-- Lobby: shown when no game is loaded -->
+    <section id="lobby">
+      <div class="lobby-title">Free the fish!</div>
+      <div class="lobby-buttons">
+        <button class="lobby-btn" id="lobby-paste">Paste PGN</button>
+        <div class="lobby-import-row">
+          <button class="lobby-btn lobby-import" id="lobby-import" disabled>Import game from current page</button>
+          <button class="lobby-refresh" id="lobby-refresh" title="Scan page for games">&#x21bb;</button>
+          <span class="lobby-spinner hidden" id="lobby-spinner"></span>
+        </div>
+      </div>
+      <div class="lobby-status" id="lobby-status"></div>
+      <div id="pgn-input-area" class="hidden">
+        <textarea id="pgn-textarea" placeholder="Paste PGN here..." rows="8"></textarea>
+        <div class="pgn-input-actions">
+          <button class="ctrl-btn" id="pgn-analyze">Analyze</button>
+          <button class="ctrl-btn" id="pgn-cancel">Cancel</button>
+          <span id="pgn-warning" class="pgn-warning hidden"></span>
+        </div>
+      </div>
+    </section>
 
     <!-- Analysis mode (completed games) -->
-    <section id="analysis-section" hidden>
-      <!-- Progress bar for full game analysis -->
-      <div id="progress-container" hidden>
+    <section id="analysis-section" class="hidden">
+      <div id="progress-container" class="hidden">
         <div class="progress-track">
           <div class="progress-fill" id="progress-bar"></div>
         </div>
         <span class="progress-text" id="progress-text">Analyzing...</span>
       </div>
-
-      <!-- Analysis summary (blunders/mistakes/etc counts) -->
-      <div id="analysis-summary" hidden></div>
-
+      <div id="analysis-summary" class="hidden"></div>
       <div class="board-row">
         <div id="eval-bar"></div>
         <div id="board-container"></div>
@@ -43,7 +59,7 @@
     </section>
 
     <!-- Live helper mode (active games) -->
-    <section id="live-section" hidden></section>
+    <section id="live-section" class="hidden"></section>
 
     <footer id="status-bar">
       <span class="status-text">Free the fish!</span>

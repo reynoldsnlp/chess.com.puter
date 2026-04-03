@@ -34,6 +34,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.tabs.create({ url: message.payload.url });
       }
       break;
+
+    case MSG.SCAN_PAGE:
+      // Forward scan request to the active tab's content script
+      handleScanPage();
+      break;
   }
 });
 
@@ -90,6 +95,32 @@ function forwardToSidePanel(message) {
   chrome.runtime.sendMessage(message).catch(() => {
     // Side panel might not be open - that's fine
   });
+}
+
+/**
+ * Forward a SCAN_PAGE request to the active tab's content script.
+ * If the content script is stale (extension was reloaded), re-inject it.
+ */
+async function handleScanPage() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return;
+
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: MSG.SCAN_PAGE });
+    } catch (e) {
+      // Content script not responding — likely stale after extension reload.
+      // Re-inject it.
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content-scripts/index.js'],
+        });
+      } catch (injectErr) {
+        // Can't inject (e.g., chrome:// page) — ignore
+      }
+    }
+  } catch (e) {}
 }
 
 // Clean up tab cache when tabs are closed
