@@ -542,6 +542,8 @@ body {
 /* --- Eval Chart --- */
 #eval-chart {
   height: 80px;
+  width: 96%;
+  align-self: center;
   flex-shrink: 0;
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);

@@ -15,7 +15,7 @@ import { analyzeGame, gameAccuracy } from './engine/gameAnalyzer.js';
 import { createEvalChart } from './components/evalChart.js';
 
 const CLASS_SYMBOL = {
-  best: '★', excellent: '+', good: '✔', book: '📖', forced: '→',
+  best: '★', excellent: '➕', good: '✔', book: '📖', forced: '→',
   inaccuracy: '?!', mistake: '?', blunder: '??',
 };
 
@@ -44,7 +44,6 @@ const pgnWarning = document.getElementById('pgn-warning');
 
 // --- DOM: Header (game loaded) ---
 const header = document.getElementById('header');
-const btnPastePgn = document.getElementById('btn-paste-pgn');
 const btnCloseGame = document.getElementById('btn-close-game');
 
 // --- DOM: Analysis ---
@@ -143,14 +142,6 @@ pgnAnalyzeBtn.addEventListener('click', () => {
   pgnWarning.classList.add('hidden');
   pgnInputArea.classList.add('hidden');
   loadGame(pgn, 'white');
-});
-
-// Paste PGN (header, when game is loaded)
-btnPastePgn.addEventListener('click', (e) => {
-  e.preventDefault();
-  closeGame();
-  pgnInputArea.classList.remove('hidden');
-  pgnTextarea.focus();
 });
 
 // Import from page
