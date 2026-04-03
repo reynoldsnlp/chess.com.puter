@@ -107,6 +107,12 @@ export function createMoveList(container, onMoveSelect) {
     }
   }
 
+  function setHoverPly(ply) {
+    for (const m of container.querySelectorAll('.move')) {
+      m.classList.toggle('chart-hover', parseInt(m.dataset.ply) === ply);
+    }
+  }
+
   function goToMove(ply) {
     if (ply < 0 || ply >= positions.length) return;
     currentPly = ply;
@@ -130,7 +136,7 @@ export function createMoveList(container, onMoveSelect) {
   });
 
   return {
-    loadPgn, setClassifications, setPlayerColor,
+    loadPgn, setClassifications, setPlayerColor, setHoverPly,
     goToMove, goForward, goBack, goToStart, goToEnd,
     getCurrentPly: () => currentPly,
     getPosition: (ply) => positions[ply] || null,

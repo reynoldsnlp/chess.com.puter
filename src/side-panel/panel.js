@@ -14,6 +14,7 @@ import { createPgnInput } from './components/pgnInput.js';
 import { createLiveHelper } from './live-helper/liveHelper.js';
 import { createStockfishController } from './engine/stockfishController.js';
 import { analyzeGame } from './engine/gameAnalyzer.js';
+import { createEvalChart } from './components/evalChart.js';
 
 // Classification symbols
 const CLASS_SYMBOL = {
@@ -61,6 +62,7 @@ const moveList = createMoveList(document.getElementById('move-list'), (ply, fen,
   }
 
   showBoardAnnotations(ply, classification);
+  evalChart.setCurrentPly(ply);
 
   if (classification) {
     evalBar.update({ type: 'cp', value: classification.evalAfter });
@@ -91,6 +93,7 @@ const controls = createControls(document.getElementById('control-bar'), {
     board.flip();
     playerColor = playerColor === 'white' ? 'black' : 'white';
     evalBar.setFlipped(playerColor === 'black');
+    evalChart.setFlipped(playerColor === 'black');
     moveList.setPlayerColor(playerColor);
     if (gameClassifications) showAnalysisSummary(gameClassifications);
   },
@@ -104,6 +107,10 @@ const controls = createControls(document.getElementById('control-bar'), {
   onGoEnd: () => moveList.goToEnd(),
   getCurrentPgn: () => currentPgn,
 });
+
+const evalChart = createEvalChart(document.getElementById('eval-chart'));
+evalChart.onClick((ply) => moveList.goToMove(ply));
+evalChart.onHover((ply) => moveList.setHoverPly(ply));
 
 const pgnInput = createPgnInput(document.getElementById('pgn-input'), (pgn) => {
   loadGame(pgn, 'white');
@@ -147,6 +154,7 @@ async function loadGame(pgn, detectedColor) {
   moveList.setPlayerColor(playerColor);
   board.setOrientation(playerColor);
   evalBar.setFlipped(playerColor === 'black');
+  evalChart.setFlipped(playerColor === 'black');
 
   // Auto-run full game analysis
   await runFullGameAnalysis();
@@ -186,6 +194,8 @@ async function runFullGameAnalysis() {
       moveList.setClassifications(classifications);
       gameClassifications = classifications;
       showAnalysisSummary(classifications);
+      evalChart.setData(classifications, positions);
+      evalChart.setCurrentPly(moveList.getCurrentPly());
       engine.setMultiPV(controls.getMultiPv());
       const ply = moveList.getCurrentPly();
       showBoardAnnotations(ply, moveList.getClassification(ply));

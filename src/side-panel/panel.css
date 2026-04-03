@@ -245,6 +245,10 @@ body {
   background: var(--bg-tertiary);
 }
 
+.move.chart-hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .move.active {
   background: var(--accent);
   color: white;
@@ -369,8 +373,8 @@ body {
   font-weight: bold;
 }
 
-.eval-positive { color: var(--eval-white); }
-.eval-negative { color: #e88; }
+.eval-positive { background: var(--eval-white); color: #1a1a1a; padding: 0 4px; border-radius: 2px; }
+.eval-negative { background: #000; color: #ddd; padding: 0 4px; border-radius: 2px; }
 
 .engine-line-moves {
   flex: 1;
@@ -383,6 +387,22 @@ body {
 .engine-line-depth {
   color: var(--text-secondary);
   font-size: 10px;
+}
+
+/* --- Eval Chart --- */
+#eval-chart {
+  height: 80px;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+  position: relative;
+}
+
+.eval-chart-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 /* --- PGN Input --- */
