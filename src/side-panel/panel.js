@@ -145,6 +145,7 @@ async function loadGame(pgn, detectedColor) {
 
   moveList.loadPgn(pgn);
   moveList.setPlayerColor(playerColor);
+  board.setOrientation(playerColor);
   evalBar.setFlipped(playerColor === 'black');
 
   // Auto-run full game analysis

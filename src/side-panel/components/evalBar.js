@@ -69,8 +69,9 @@ export function createEvalBar(container) {
       // Default bar: black background, white fill from bottom = white at bottom.
       // Rotate 180° to put white at top (black at bottom).
       // The "flipped" flag should match: true = black at bottom of board.
-      track.style.transform = flipped ? '' : 'rotate(180deg)';
-      label.style.transform = flipped ? '' : 'rotate(180deg)';
+      // flipped=true means black is at bottom of board → rotate so black side is at bottom of bar
+      track.style.transform = flipped ? 'rotate(180deg)' : '';
+      label.style.transform = flipped ? 'rotate(180deg)' : '';
     },
   };
 }
