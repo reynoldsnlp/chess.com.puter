@@ -156,6 +156,15 @@ body {
 .summary-mistake .summary-icon { background: #e69a28; }
 .summary-blunder .summary-icon { background: #ca3431; }
 
+.summary-accuracy {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-right: 4px;
+  padding: 2px 8px;
+  border-right: 1px solid var(--border);
+}
+
 .summary-best { color: #96bc4b; }
 .summary-excellent { color: #96bc4b; }
 .summary-good { color: #97af8b; }
@@ -305,6 +314,12 @@ body {
   display: flex;
   gap: 4px;
   justify-content: center;
+}
+
+.controls-nav .ctrl-btn {
+  font-size: 20px;
+  padding: 4px 14px;
+  line-height: 1;
 }
 
 .controls-settings {

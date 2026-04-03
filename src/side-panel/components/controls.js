@@ -68,13 +68,13 @@ export function createControls(container, callbacks) {
 
   // Depth
   container.querySelector('#btn-depth-down').addEventListener('click', () => {
-    depth = Math.max(1, depth - 5);
+    depth = Math.max(1, depth - 1);
     depthValue.textContent = depth;
     savePrefs();
     callbacks.onDepthChange(depth);
   });
   container.querySelector('#btn-depth-up').addEventListener('click', () => {
-    depth = Math.min(MAX_DEPTH, depth + 5);
+    depth = Math.min(MAX_DEPTH, depth + 1);
     depthValue.textContent = depth;
     savePrefs();
     callbacks.onDepthChange(depth);

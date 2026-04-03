@@ -13,7 +13,7 @@ import { createControls } from './components/controls.js';
 import { createPgnInput } from './components/pgnInput.js';
 import { createLiveHelper } from './live-helper/liveHelper.js';
 import { createStockfishController } from './engine/stockfishController.js';
-import { analyzeGame } from './engine/gameAnalyzer.js';
+import { analyzeGame, gameAccuracy } from './engine/gameAnalyzer.js';
 import { createEvalChart } from './components/evalChart.js';
 
 // Classification symbols
@@ -225,11 +225,14 @@ function showAnalysisSummary(classifications) {
     { key: 'blunder', label: CLASS_SYMBOL.blunder },
   ];
 
-  analysisSummary.innerHTML = `<div class="summary-row">${
-    items.map(({ key, label }) =>
+  const accuracy = gameAccuracy(classifications, isMyMove);
+
+  analysisSummary.innerHTML = `<div class="summary-row">
+    <span class="summary-item summary-accuracy" title="Accuracy (Lichess formula)">${accuracy.toFixed(1)}%</span>
+    ${items.map(({ key, label }) =>
       `<span class="summary-item summary-${key}" title="${key}"><span class="summary-icon">${label}</span> ${counts[key]}</span>`
-    ).join('')
-  }</div>`;
+    ).join('')}
+  </div>`;
   analysisSummary.hidden = false;
 }
 

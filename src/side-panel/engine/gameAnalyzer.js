@@ -20,6 +20,42 @@ export function cpToWinPercent(cp) {
 }
 
 /**
+ * Per-move accuracy using Lichess formula.
+ * winPctBefore/After on 0-100 scale.
+ * Returns 0-100.
+ */
+export function moveAccuracy(winPctBefore, winPctAfter) {
+  const drop = winPctBefore - winPctAfter; // positive = lost winning chances
+  const acc = 103.1668 * Math.exp(-0.04354 * Math.max(0, drop)) - 3.1669;
+  return Math.max(0, Math.min(100, acc));
+}
+
+/**
+ * Compute game accuracy for a set of classifications (one player's moves).
+ * Uses harmonic mean of per-move accuracies (weights bad moves more heavily).
+ */
+export function gameAccuracy(classifications, isMyMoveFn) {
+  let sumReciprocal = 0;
+  let count = 0;
+  for (let ply = 1; ply < classifications.length; ply++) {
+    if (!isMyMoveFn(ply)) continue;
+    const cls = classifications[ply];
+    if (!cls) continue;
+
+    const isWhiteMove = ply % 2 === 1;
+    const wpBefore = isWhiteMove ? cpToWinPercent(cls.evalBefore) : cpToWinPercent(-cls.evalBefore);
+    const wpAfter = isWhiteMove ? cpToWinPercent(cls.evalAfter) : cpToWinPercent(-cls.evalAfter);
+    const acc = moveAccuracy(wpBefore, wpAfter);
+    if (acc > 0) {
+      sumReciprocal += 1 / acc;
+      count++;
+    }
+  }
+  if (count === 0) return 0;
+  return count / sumReciprocal; // harmonic mean
+}
+
+/**
  * Expected points from the mover's perspective.
  * @param {number} whiteNormalizedCp - eval from white's perspective
  * @param {boolean} isWhiteMove - true if white just moved
