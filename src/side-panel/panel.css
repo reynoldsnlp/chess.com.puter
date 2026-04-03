@@ -22,12 +22,17 @@ body {
   font-size: 13px;
   line-height: 1.4;
   height: 100vh;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  width: 100vw;
+  max-width: 100vw;
 }
 
 #app {
   display: flex;
   flex-direction: column;
+  max-width: 100vw;
+  overflow-x: hidden;
   height: 100%;
 }
 
@@ -62,8 +67,10 @@ body {
 #analysis-section {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 /* --- Board row: eval bar + chessground --- */
@@ -71,6 +78,9 @@ body {
   display: flex;
   flex-shrink: 0;
   position: relative;
+  max-width: 500px;
+  align-self: center;
+  width: 100%;
 }
 
 /* --- Progress bar --- */
@@ -198,6 +208,8 @@ body {
   flex: 1;
   aspect-ratio: 1;
   max-height: 50vh;
+  min-width: 0;
+  overflow: hidden;
 }
 
 #board-container .cg-wrap {
