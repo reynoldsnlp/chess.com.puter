@@ -11,6 +11,10 @@ import { createEngineLines } from './components/engineLines.js';
 import { createControls } from './components/controls.js';
 import { createLiveHelper } from './live-helper/liveHelper.js';
 import { createStockfishController } from './engine/stockfishController.js';
+import { Chess } from 'chessops/chess';
+import { parseFen, makeFen } from 'chessops/fen';
+import { makeSan } from 'chessops/san';
+import { parseSquare, makeUci as chessopsUci } from 'chessops/util';
 import { analyzeGame, gameAccuracy } from './engine/gameAnalyzer.js';
 import { createEvalChart } from './components/evalChart.js';
 
@@ -59,17 +63,32 @@ const analysisSummary = document.getElementById('analysis-summary');
 const board = createBoard(document.getElementById('board-container'));
 const evalBar = createEvalBar(document.getElementById('eval-bar'));
 
-const moveList = createMoveList(document.getElementById('move-list'), (ply, fen, classification) => {
+const moveList = createMoveList(document.getElementById('move-list'), (ply, fen, classification, hypoUci) => {
+  const inHypo = ply === -1;
+
   board.setPosition(fen);
   currentAnalysisFen = fen;
-  if (ply > 0) {
+
+  if (inHypo && hypoUci) {
+    // Hypothetical move: light blue highlight
+    const sq = uciSquares(hypoUci);
+    board.setHypoLastMove(sq.from, sq.to);
+  } else if (!inHypo && ply > 0) {
     const pos = moveList.getPosition(ply);
     if (pos?.uci) { const sq = uciSquares(pos.uci); board.setLastMove(sq.from, sq.to); }
-  } else { board.setLastMove(null, null); }
-  showBoardAnnotations(ply, classification);
-  evalChart.setCurrentPly(ply);
-  if (classification) evalBar.update({ type: 'cp', value: classification.evalAfter });
-  else evalBar.reset();
+  } else {
+    board.setLastMove(null, null);
+  }
+
+  if (!inHypo) {
+    showBoardAnnotations(ply, classification);
+    evalChart.setCurrentPly(ply);
+    if (classification) evalBar.update({ type: 'cp', value: classification.evalAfter });
+    else evalBar.reset();
+  } else {
+    board.clearAutoShapes();
+  }
+
   engineLines.clear();
   engineLines.setFen(fen);
   analyzePosition(fen);
@@ -79,7 +98,14 @@ const engineLines = createEngineLines(document.getElementById('engine-lines'));
 
 const controls = createControls(document.getElementById('control-bar'), {
   onDepthChange: (d) => { const p = moveList.getPosition(moveList.getCurrentPly()); if (p && engine?.isReady()) { engineLines.clear(); engine.analyze(p.fen, d); } },
-  onMultiPvChange: (n) => { if (engine?.isReady()) { engine.setMultiPV(n); const p = moveList.getPosition(moveList.getCurrentPly()); if (p) { engineLines.clear(); engine.analyze(p.fen, controls.getDepth()); } } },
+  onMultiPvChange: (n) => {
+    engineLines.setMaxLines(n);
+    if (engine?.isReady()) {
+      engine.setMultiPV(n);
+      const p = moveList.getPosition(moveList.getCurrentPly());
+      if (p) { engineLines.clear(); engine.analyze(p.fen, controls.getDepth()); }
+    }
+  },
   onFlip: () => {
     board.flip();
     playerColor = playerColor === 'white' ? 'black' : 'white';
@@ -101,10 +127,46 @@ const controls = createControls(document.getElementById('control-bar'), {
 });
 
 const evalChart = createEvalChart(document.getElementById('eval-chart'));
-evalChart.onClick((ply) => moveList.goToMove(ply));
+evalChart.onClick((ply) => { moveList.closeHypothetical(); moveList.goToMove(ply); });
 evalChart.onHover((ply) => moveList.setHoverPly(ply));
 
 const liveHelper = createLiveHelper(document.getElementById('live-section'));
+
+// --- Board move handler (for hypothetical lines) ---
+board.onMove((from, to) => {
+  // Get the current FEN before the move
+  const fen = moveList.getCurrentFen();
+  if (!fen) return;
+
+  // Use chessops to validate and get SAN
+  const setup = parseFen(fen);
+  if (setup.isErr) return;
+  const pos = Chess.fromSetup(setup.value);
+  if (pos.isErr) return;
+  const chess = pos.value;
+
+  const fromSq = parseSquare(from);
+  const toSq = parseSquare(to);
+  if (fromSq === undefined || toSq === undefined) return;
+
+  // Find the legal move matching from/to (handle promotions as queen by default)
+  const move = { from: fromSq, to: toSq };
+  // Check if it's a pawn promotion
+  const piece = chess.board.get(fromSq);
+  if (piece?.role === 'pawn') {
+    const toRank = toSq >> 3;
+    if (toRank === 0 || toRank === 7) move.promotion = 'queen';
+  }
+
+  if (!chess.isLegal(move)) return;
+
+  const san = makeSan(chess, move);
+  const uci = chessopsUci(move);
+  chess.play(move);
+  const newFen = makeFen(chess.toSetup());
+
+  moveList.handleUserMove(uci, newFen, san);
+});
 
 // ============================================================
 // LOBBY UI LOGIC
@@ -121,6 +183,8 @@ function setMode(mode) {
       mode === 'analysis' ? 'Free the fish!' :
       mode === 'live_helper' ? 'Game in progress' : 'Free the fish!';
   }
+  // Board dimensions change when sections show/hide — recalculate
+  if (mode === 'analysis') requestAnimationFrame(() => board.redraw());
 }
 
 // Paste PGN (lobby)
@@ -172,6 +236,7 @@ function closeGame() {
   evalBar.reset();
   board.clearAutoShapes();
   board.setLastMove(null, null);
+  board.disableInteraction();
   board.setPosition('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
   moveList.loadPgn(null);
   evalChart.setData([], []);
@@ -273,6 +338,7 @@ async function loadGame(pgn, detectedColor) {
   moveList.loadPgn(pgn);
   moveList.setPlayerColor(playerColor);
   board.setOrientation(playerColor);
+  board.enableInteraction();
   evalBar.setFlipped(playerColor === 'black');
   evalChart.setFlipped(playerColor === 'black');
   evalChart.setPlayerColor(playerColor);
@@ -303,6 +369,7 @@ async function runFullGameAnalysis() {
     },
     onComplete(classifications) {
       if (progressContainer) progressContainer.classList.add('hidden');
+      requestAnimationFrame(() => board.redraw()); // layout changed
       moveList.setClassifications(classifications);
       gameClassifications = classifications;
       showAnalysisSummary(classifications);

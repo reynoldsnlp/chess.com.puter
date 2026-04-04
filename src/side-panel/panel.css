@@ -350,8 +350,13 @@ body {
 }
 
 /* Last move highlight: subtle greenish-yellow */
-#board-container .cg-wrap square.last-move {
+#board-container cg-board square.last-move {
   background-color: rgba(180, 210, 80, 0.3) !important;
+}
+
+/* Hypothetical move highlight: light blue */
+#board-container.hypo-highlight cg-board square.last-move {
+  background-color: rgba(100, 160, 240, 0.35) !important;
 }
 
 /* --- Move list --- */
@@ -365,7 +370,7 @@ body {
   border-bottom: 1px solid var(--border);
   display: flex;
   flex-wrap: wrap;
-  gap: 1px 2px;
+  gap: 1px 0;
   align-content: flex-start;
 }
 
@@ -379,14 +384,50 @@ body {
 .move {
   cursor: pointer;
   padding: 1px 3px;
+  margin-right: 2px;
   border-radius: 2px;
   font-size: 12px;
   font-weight: 500;
   transition: background 0.1s;
 }
 
+/* Hypo spans use internal spacing, no external margin */
+.hypo-move, .hypo-number { margin-right: 0; }
+
 .move:hover {
   background: var(--bg-tertiary);
+}
+
+/* --- Hypothetical variation (inline spans with continuous borders) --- */
+.hypo-move, .hypo-number {
+  border-top: 2px solid #4a90d9;
+  border-bottom: 2px solid #4a90d9;
+  background: rgba(74, 144, 217, 0.06);
+  margin: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.hypo-move { color: #6ab0f3 !important; }
+.hypo-number { color: #6ab0f3; }
+
+.hypo-first {
+  border-left: 2px solid #4a90d9;
+  border-top-left-radius: 3px;
+  border-bottom-left-radius: 3px;
+  padding-left: 4px;
+}
+
+.hypo-last {
+  border-right: 2px solid #4a90d9;
+  border-top-right-radius: 3px;
+  border-bottom-right-radius: 3px;
+  padding-right: 4px;
+}
+
+.hypo-move.active {
+  background: #4a90d9 !important;
+  color: white !important;
 }
 
 .move.chart-hover {

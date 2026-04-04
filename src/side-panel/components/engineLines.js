@@ -12,12 +12,20 @@ import { parseUci } from 'chessops/util';
 export function createEngineLines(container) {
   let currentFen = null;
   let lines = new Map(); // multipv index -> line data
+  let maxLines = 3; // current MultiPV setting
+  let onLineCountChange = null;
 
   function render() {
     container.innerHTML = '';
 
+    // Prune lines that exceed the current MultiPV setting
+    for (const key of lines.keys()) {
+      if (key > maxLines) lines.delete(key);
+    }
+
     if (lines.size === 0) {
       container.innerHTML = '<div class="engine-lines-empty">Engine idle</div>';
+      if (onLineCountChange) onLineCountChange(0);
       return;
     }
 
@@ -63,12 +71,14 @@ export function createEngineLines(container) {
      * @param {object} info - parsed UCI info: { multipv, depth, score, pv }
      */
     updateLine(info) {
+      if (info.multipv > maxLines) return; // ignore lines beyond current setting
       lines.set(info.multipv, {
         depth: info.depth,
         score: info.score,
         pv: info.pv || [],
       });
       render();
+      if (onLineCountChange) onLineCountChange(lines.size);
     },
 
     /** Set the current position FEN (for UCI-to-SAN conversion) */
@@ -81,6 +91,12 @@ export function createEngineLines(container) {
       lines.clear();
       render();
     },
+
+    /** Set the maximum number of lines (MultiPV) */
+    setMaxLines(n) { maxLines = n; render(); },
+
+    /** Register callback when rendered line count changes */
+    onLineCountChange(fn) { onLineCountChange = fn; },
 
     /** Get the best eval from multipv 1 */
     getBestEval() {
