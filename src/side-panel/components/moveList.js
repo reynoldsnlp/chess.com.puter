@@ -45,7 +45,7 @@ export function createMoveList(container, onMoveSelect) {
     }
 
     render();
-    goToMove(positions.length - 1);
+    goToMove(0);
   }
 
   function setPlayerColor(color) { myColor = color; if (classifications.length) render(); if (currentPly > 0) highlightPly(currentPly); }
