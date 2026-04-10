@@ -81,12 +81,16 @@ const moveList = createMoveList(document.getElementById('move-list'), (ply, fen,
   }
 
   if (!inHypo) {
+    hypoBestAlternative = null;
     showBoardAnnotations(ply, classification);
     evalChart.setCurrentPly(ply);
     if (classification) evalBar.update({ type: 'cp', value: classification.evalAfter });
     else evalBar.reset();
   } else {
-    board.clearAutoShapes();
+    // Capture the best move from the *previous* position's analysis
+    // before clearing — this is the best alternative to the move just played.
+    hypoBestAlternative = engineLines.getBestMove();
+    showHypoBestMoveArrow();
   }
 
   engineLines.clear();
@@ -456,6 +460,14 @@ function makeClassificationSvg(symbol, color) {
     <text x="85" y="15" text-anchor="middle" dominant-baseline="central"
           font-size="18" font-weight="bold" fill="white" font-family="sans-serif">${symbol}</text>
   </svg>`;
+}
+
+let hypoBestAlternative = null;
+
+function showHypoBestMoveArrow() {
+  if (!controls.isEngineOn() || !hypoBestAlternative?.length) { board.clearAutoShapes(); return; }
+  const sq = uciSquares(hypoBestAlternative);
+  board.setAutoShapes([{ orig: sq.from, dest: sq.to, brush: 'lightblue' }]);
 }
 
 // ============================================================

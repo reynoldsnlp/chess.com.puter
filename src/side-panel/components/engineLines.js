@@ -102,6 +102,11 @@ export function createEngineLines(container) {
     getBestEval() {
       return lines.get(1)?.score || null;
     },
+
+    /** Get the best move (first move of PV 1) in UCI notation */
+    getBestMove() {
+      return lines.get(1)?.pv?.[0] || null;
+    },
   };
 }
 

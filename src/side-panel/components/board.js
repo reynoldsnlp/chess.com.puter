@@ -26,6 +26,7 @@ export function createBoard(container) {
         red: { key: 'red', color: '#882020', opacity: 0.4, lineWidth: 10 },
         blue: { key: 'blue', color: '#003088', opacity: 0.4, lineWidth: 10 },
         yellow: { key: 'yellow', color: '#e6a000', opacity: 0.4, lineWidth: 10 },
+        lightblue: { key: 'lightblue', color: '#64A0F0', opacity: 0.4, lineWidth: 10 },
       },
     },
   });
