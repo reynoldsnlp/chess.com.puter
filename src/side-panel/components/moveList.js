@@ -51,6 +51,26 @@ export function createMoveList(container, onMoveSelect) {
   function setPlayerColor(color) { myColor = color; if (classifications.length) render(); if (currentPly > 0) highlightPly(currentPly); }
   function setClassifications(classResults) { classifications = classResults || []; render(); if (currentPly > 0) highlightPly(currentPly); }
 
+  function updateClassification(ply, cls) {
+    while (classifications.length <= ply) classifications.push(null);
+    classifications[ply] = cls;
+    const moveSpan = container.querySelector(`.move[data-ply="${ply}"]`);
+    if (!moveSpan) return;
+    const mine = isMyPly(ply);
+    for (const c of ['best', 'excellent', 'good', 'book', 'forced', 'inaccuracy', 'mistake', 'blunder']) {
+      moveSpan.classList.remove(`move-${c}`);
+    }
+    if (cls && mine) moveSpan.classList.add(`move-${cls.classification}`);
+    let displayText = positions[ply]?.san || '';
+    if (cls?.glyph) displayText += cls.glyph;
+    moveSpan.textContent = displayText;
+    if (cls) {
+      const evalStr = (cls.evalAfter / 100).toFixed(1);
+      const epStr = cls.epLoss !== undefined ? cls.epLoss.toFixed(3) : '?';
+      moveSpan.title = `${cls.classification} (EP loss: ${epStr}) | eval: ${evalStr}`;
+    }
+  }
+
   function render() {
     container.innerHTML = '';
     hypoBox = null;
@@ -283,7 +303,7 @@ export function createMoveList(container, onMoveSelect) {
   });
 
   return {
-    loadPgn, setClassifications, setPlayerColor, setHoverPly,
+    loadPgn, setClassifications, updateClassification, setPlayerColor, setHoverPly,
     goToMove, goForward, goBack, goToStart, goToEnd,
     handleUserMove, closeHypothetical, isInHypothetical, canGoForward,
     getCurrentPly: () => currentPly,

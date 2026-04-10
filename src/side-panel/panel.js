@@ -30,6 +30,7 @@ let engine = null;
 let currentAnalysisFen = null;
 let gameClassifications = null;
 let fullAnalysisCancelled = false;
+let fullAnalysisRunning = false;
 let playerColor = 'white';
 let pendingScanData = null; // game data from last scan (not yet imported)
 
@@ -238,6 +239,7 @@ btnCloseGame.addEventListener('click', (e) => {
 
 function closeGame() {
   fullAnalysisCancelled = true;
+  fullAnalysisRunning = false;
   if (engine) engine.stop();
   currentPgn = null;
   gameClassifications = null;
@@ -342,6 +344,7 @@ async function loadGame(pgn, detectedColor) {
   if (!isGameComplete(pgn)) return;
 
   fullAnalysisCancelled = true;
+  fullAnalysisRunning = true;
   currentPgn = pgn;
   gameClassifications = null;
   playerColor = detectedColor || 'white';
@@ -370,8 +373,11 @@ async function runFullGameAnalysis() {
   if (positions.length < 2) return;
 
   fullAnalysisCancelled = false;
+  fullAnalysisRunning = true;
   if (progressContainer) progressContainer.classList.remove('hidden');
   if (analysisSummary) analysisSummary.classList.add('hidden');
+
+  const partialClassifications = [null]; // accumulates as analysis progresses
 
   gameClassifications = await analyzeGame(positions, engine, {
     depth: 16,
@@ -379,7 +385,26 @@ async function runFullGameAnalysis() {
       if (progressBar) progressBar.style.width = (total > 0 ? (current / total) * 100 : 0) + '%';
       if (progressText) progressText.textContent = `Analyzing: ${current}/${total} positions...`;
     },
+    onMoveAnalyzed(ply, cls) {
+      // Accumulate classifications incrementally
+      while (partialClassifications.length <= ply) partialClassifications.push(null);
+      partialClassifications[ply] = cls;
+
+      // Incrementally colorize/classify the move in the move list
+      moveList.updateClassification(ply, cls);
+
+      // Incrementally build eval chart (grows as analysis progresses)
+      evalChart.setData(partialClassifications, positions.slice(0, ply + 1));
+      evalChart.setCurrentPly(moveList.getCurrentPly());
+
+      // If user is viewing this ply, update board annotations and eval bar
+      if (moveList.getCurrentPly() === ply && !moveList.isInHypothetical()) {
+        showBoardAnnotations(ply, cls);
+        evalBar.update({ type: 'cp', value: cls.evalAfter });
+      }
+    },
     onComplete(classifications) {
+      fullAnalysisRunning = false;
       if (progressContainer) progressContainer.classList.add('hidden');
       requestAnimationFrame(() => board.redraw()); // layout changed
       moveList.setClassifications(classifications);
@@ -390,6 +415,9 @@ async function runFullGameAnalysis() {
       engine.setMultiPV(controls.getMultiPv());
       const ply = moveList.getCurrentPly();
       showBoardAnnotations(ply, moveList.getClassification(ply));
+      // Start live analysis for the current position
+      const pos = moveList.getPosition(ply);
+      if (pos) analyzePosition(pos.fen);
     },
     isCancelled: () => fullAnalysisCancelled,
   });
@@ -501,6 +529,7 @@ async function initEngine() {
 
 async function analyzePosition(fen) {
   if (!controls.isEngineOn() || currentMode !== 'analysis') return;
+  if (fullAnalysisRunning) return;
   currentAnalysisFen = fen;
   engineLines.setFen(fen);
   if (!engine) await initEngine();

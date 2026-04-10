@@ -103,10 +103,12 @@ export async function analyzeGame(positions, sfController, options = {}) {
   const depth = options.depth || 16;
   const onProgress = options.onProgress || (() => {});
   const onComplete = options.onComplete || (() => {});
+  const onMoveAnalyzed = options.onMoveAnalyzed || (() => {});
   const isCancelled = options.isCancelled || (() => false);
 
   const totalPositions = positions.length;
   const evals = [];
+  const classifications = [null]; // index 0 = starting position
 
   // Ensure clean engine state
   await sfController.stopAndWait();
@@ -142,47 +144,39 @@ export async function analyzeGame(positions, sfController, options = {}) {
       pv: result.pv,
       legalMoveCount,
     });
+
+    // Classify the move immediately once we have before and after evals
+    if (i >= 1) {
+      const ply = i;
+      const evalBefore = evals[ply - 1];
+      const evalAfter = evals[ply];
+      const isWhiteMove = ply % 2 === 1;
+
+      const epBefore = expectedPointsForMover(evalBefore.whiteNormalizedCp, isWhiteMove);
+      const epAfter = expectedPointsForMover(evalAfter.whiteNormalizedCp, isWhiteMove);
+      const epLoss = Math.max(0, epBefore - epAfter);
+
+      const engineBestUci = evalBefore.bestMove || '';
+      const playerMoveUci = positions[ply].uci || '';
+      const isBestMove = engineBestUci && playerMoveUci && engineBestUci === playerMoveUci;
+      const isForced = evalBefore.legalMoveCount === 1;
+      const isBookMove = ply <= 6 && epLoss <= 0.02;
+
+      const classification = classifyMove(epLoss, isBestMove, isForced, isBookMove);
+      const cls = {
+        ...classification,
+        evalBefore: evalBefore.whiteNormalizedCp,
+        evalAfter: evalAfter.whiteNormalizedCp,
+        engineBestMove: engineBestUci,
+        enginePv: evalBefore.pv,
+      };
+
+      classifications.push(cls);
+      onMoveAnalyzed(ply, cls);
+    }
   }
 
   onProgress(totalPositions, totalPositions);
-
-  // Classify each move
-  const classifications = [null]; // index 0 = starting position
-
-  for (let ply = 1; ply < totalPositions; ply++) {
-    const evalBefore = evals[ply - 1];
-    const evalAfter = evals[ply];
-    const isWhiteMove = ply % 2 === 1;
-
-    // Expected points from the mover's perspective, before and after
-    const epBefore = expectedPointsForMover(evalBefore.whiteNormalizedCp, isWhiteMove);
-    const epAfter = expectedPointsForMover(evalAfter.whiteNormalizedCp, isWhiteMove);
-
-    // Expected points lost (positive = bad for the mover)
-    const epLoss = Math.max(0, epBefore - epAfter);
-
-    // Check if the player's move matches the engine's best
-    const engineBestUci = evalBefore.bestMove || '';
-    const playerMoveUci = positions[ply].uci || '';
-    const isBestMove = engineBestUci && playerMoveUci && engineBestUci === playerMoveUci;
-
-    // Forced: only one legal move was available
-    const isForced = evalBefore.legalMoveCount === 1;
-
-    // Book: first few moves of the game (simplified heuristic)
-    const isBookMove = ply <= 6 && epLoss <= 0.02;
-
-    const classification = classifyMove(epLoss, isBestMove, isForced, isBookMove);
-
-    classifications.push({
-      ...classification,
-      evalBefore: evalBefore.whiteNormalizedCp,
-      evalAfter: evalAfter.whiteNormalizedCp,
-      engineBestMove: engineBestUci,
-      enginePv: evalBefore.pv,
-    });
-  }
-
   onComplete(classifications);
   return classifications;
 }
