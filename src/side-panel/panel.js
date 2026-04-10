@@ -101,6 +101,62 @@ const moveList = createMoveList(document.getElementById('move-list'), (ply, fen,
 
 const engineLines = createEngineLines(document.getElementById('engine-lines'));
 
+// --- Engine line hover/click: preview PV on board ---
+let engineLineHoverFen = null; // non-null while hovering an engine-line move
+
+engineLines.onMoveHover((fen, uciMove) => {
+  engineLineHoverFen = fen;
+  board.setPosition(fen);
+  const sq = uciSquares(uciMove);
+  board.setHypoLastMove(sq.from, sq.to);
+});
+
+engineLines.onMoveLeave(() => {
+  if (!engineLineHoverFen) return;
+  engineLineHoverFen = null;
+  // Restore board to the real current position
+  const pos = moveList.isInHypothetical()
+    ? { fen: moveList.getCurrentFen() }
+    : moveList.getPosition(moveList.getCurrentPly());
+  if (pos) board.setPosition(pos.fen);
+  // Restore last-move highlight
+  if (!moveList.isInHypothetical()) {
+    const ply = moveList.getCurrentPly();
+    const p = moveList.getPosition(ply);
+    if (p?.uci) { const sq = uciSquares(p.uci); board.setLastMove(sq.from, sq.to); }
+    else board.setLastMove(null, null);
+  }
+});
+
+engineLines.onMoveClick((moves) => {
+  engineLineHoverFen = null;
+
+  if (moveList.isInHypothetical()) {
+    // Extend/replace from the current hypothetical position
+    for (const m of moves) {
+      moveList.addHypotheticalMove(m);
+    }
+  } else {
+    // Start a new hypothetical from the current main-line position
+    const branchPly = moveList.getCurrentPly();
+    for (let i = 0; i < moves.length; i++) {
+      if (i === 0) {
+        moveList.startHypothetical(branchPly, moves[i]);
+      } else {
+        moveList.addHypotheticalMove(moves[i]);
+      }
+    }
+  }
+  moveList.navigateHypothetical(moveList.getHypoLength() - 1);
+
+  // Show the last clicked move as the best-move arrow
+  const lastMove = moves[moves.length - 1];
+  if (lastMove?.uci) {
+    const sq = uciSquares(lastMove.uci);
+    board.setAutoShapes([{ orig: sq.from, dest: sq.to, brush: 'lightblue' }]);
+  }
+});
+
 const controls = createControls(document.getElementById('control-bar'), {
   onDepthChange: (d) => { const p = moveList.getPosition(moveList.getCurrentPly()); if (p && engine?.isReady()) { engineLines.clear(); engine.analyze(p.fen, d); } },
   onMultiPvChange: (n) => {
@@ -512,7 +568,7 @@ async function initEngine() {
       const bestEval = engineLines.getBestEval();
       if (bestEval) evalBar.update(bestEval);
     },
-    onBestMove() {},
+    onBestMove() { engineLines.setFinalized(); },
     onStatus(status) {
       const el = statusBar?.querySelector('.status-text');
       if (!el) return;

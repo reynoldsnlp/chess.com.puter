@@ -134,7 +134,7 @@ export function createMoveList(container, onMoveSelect) {
         if (isFirst) numSpan.classList.add('hypo-first');
         const moveNum = Math.ceil(totalPly / 2);
         // Include trailing space inside the span so borders are continuous
-        numSpan.textContent = (isWhite ? `${moveNum}.\u00A0` : `${moveNum}...\u00A0`);
+        numSpan.textContent = (isWhite ? `${moveNum}.\u00A0` : `${moveNum}\u2026\u00A0`);
         container.insertBefore(numSpan, insertBefore);
         hypoElements.push(numSpan);
       }
@@ -306,6 +306,8 @@ export function createMoveList(container, onMoveSelect) {
     loadPgn, setClassifications, updateClassification, setPlayerColor, setHoverPly,
     goToMove, goForward, goBack, goToStart, goToEnd,
     handleUserMove, closeHypothetical, isInHypothetical, canGoForward,
+    startHypothetical, addHypotheticalMove, navigateHypothetical,
+    getHypoLength: () => hypo ? hypo.moves.length : 0,
     getCurrentPly: () => currentPly,
     getPosition: (ply) => positions[ply] || null,
     getClassification: (ply) => classifications[ply] || null,

@@ -371,12 +371,13 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 1px 0;
+  align-items: baseline;
   align-content: flex-start;
 }
 
 .move-number {
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 10px;
   margin-right: 2px;
   user-select: none;
 }
@@ -400,6 +401,9 @@ body {
 
 /* --- Hypothetical variation (inline spans with continuous borders) --- */
 .hypo-move, .hypo-number {
+  align-self: stretch;
+  display: inline-flex;
+  align-items: baseline;
   border-top: 2px solid #4a90d9;
   border-bottom: 2px solid #4a90d9;
   background: rgba(74, 144, 217, 0.06);
@@ -409,7 +413,7 @@ body {
 }
 
 .hypo-move { color: #6ab0f3 !important; }
-.hypo-number { color: #6ab0f3; }
+.hypo-number { color: #6ab0f3; align-items: center; }
 
 .hypo-first {
   border-left: 2px solid #4a90d9;
@@ -573,6 +577,24 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-secondary);
+}
+
+.engine-line-num {
+  color: var(--text-secondary);
+  opacity: 0.6;
+  font-size: 9px;
+}
+
+.engine-line-move {
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0 1px;
+  transition: background 0.1s, color 0.1s;
+}
+
+.engine-line-move:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .engine-line-depth {
