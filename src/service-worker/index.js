@@ -61,6 +61,7 @@ function handleGameDetected(payload, tabId) {
     metadata: metadata || {},
     platform: platform || 'unknown',
     url: url || '',
+    tabId: tabId || null,
   };
 
   // Cache for this tab
@@ -74,9 +75,18 @@ function handleGameDetected(payload, tabId) {
 
 /**
  * Handle a REQUEST_GAME message from the side panel.
+ * Prioritises live games from any tab over the active tab's cached data.
  */
 async function handleRequestGame(sendResponse) {
-  // Get the active tab
+  // Check all cached tabs for a live game first
+  for (const [tid, data] of tabGameData) {
+    if (data.mode === 'live_helper') {
+      sendResponse({ type: MSG.GAME_DATA, payload: { ...data, tabId: tid } });
+      return;
+    }
+  }
+
+  // Fall back to the active tab
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const tabId = tab?.id;
   const cached = tabId ? tabGameData.get(tabId) : null;
@@ -127,3 +137,44 @@ async function handleScanPage() {
 chrome.tabs.onRemoved.addListener((tabId) => {
   tabGameData.delete(tabId);
 });
+
+// ============================================================
+// POLL ALL TABS FOR ACTIVE GAMES
+// ============================================================
+
+const ALL_TAB_POLL_MS = 5000;
+
+/**
+ * Send SCAN_PAGE to every tab matching the manifest's host_permissions
+ * so the panel can discover live games that are not on the active tab.
+ */
+async function pollAllTabs() {
+  try {
+    const manifest = chrome.runtime.getManifest();
+    const urls = (manifest.host_permissions || []).map((p) =>
+      p.endsWith('*') ? p : p + '*'
+    );
+    if (!urls.length) return;
+
+    const tabs = await chrome.tabs.query({ url: urls });
+
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      try {
+        await chrome.tabs.sendMessage(tab.id, { type: MSG.SCAN_PAGE });
+      } catch (_) {
+        // Content script not responding — re-inject
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['content-scripts/index.js'],
+          });
+        } catch (__) {
+          // Can't inject (restricted page) — ignore
+        }
+      }
+    }
+  } catch (_) {}
+}
+
+setInterval(pollAllTabs, ALL_TAB_POLL_MS);
