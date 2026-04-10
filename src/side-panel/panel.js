@@ -40,6 +40,7 @@ let liveGameTabId = null; // tab that triggered the live-helper mode
 const lobby = document.getElementById('lobby');
 const lobbyImportBtn = document.getElementById('lobby-import');
 const lobbyPasteBtn = document.getElementById('lobby-paste');
+const lobbySandboxBtn = document.getElementById('lobby-sandbox');
 const lobbyRefreshBtn = document.getElementById('lobby-refresh');
 const lobbySpinner = document.getElementById('lobby-spinner');
 const lobbyStatus = document.getElementById('lobby-status');
@@ -264,6 +265,11 @@ lobbyPasteBtn.addEventListener('click', () => {
   pgnTextarea.focus();
 });
 
+// Sandbox (lobby)
+lobbySandboxBtn.addEventListener('click', () => {
+  startSandbox();
+});
+
 pgnCancelBtn.addEventListener('click', () => {
   pgnInputArea.classList.add('hidden');
   pgnWarning.classList.add('hidden');
@@ -417,6 +423,31 @@ async function loadGame(pgn, detectedColor) {
   evalChart.setPlayerColor(playerColor);
 
   await runFullGameAnalysis();
+}
+
+async function startSandbox() {
+  fullAnalysisCancelled = true;
+  fullAnalysisRunning = false;
+  currentPgn = null;
+  gameClassifications = null;
+  playerColor = 'white';
+  setMode('analysis');
+
+  moveList.loadStartingPosition();
+  moveList.setPlayerColor(playerColor);
+  board.setOrientation(playerColor);
+  board.enableInteraction();
+  evalBar.setFlipped(false);
+  evalChart.setFlipped(false);
+  evalChart.setPlayerColor(playerColor);
+  evalChart.setData([], []);
+  if (analysisSummary) { analysisSummary.innerHTML = ''; analysisSummary.classList.add('hidden'); }
+  if (progressContainer) progressContainer.classList.add('hidden');
+
+  const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  board.setPosition(startFen);
+  board.setLastMove(null, null);
+  analyzePosition(startFen);
 }
 
 async function runFullGameAnalysis() {

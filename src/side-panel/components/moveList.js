@@ -48,6 +48,14 @@ export function createMoveList(container, onMoveSelect) {
     goToMove(0);
   }
 
+  function loadStartingPosition() {
+    positions = []; classifications = []; currentPly = 0; closeHypothetical();
+    container.innerHTML = '';
+    const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    positions.push({ fen: STARTING_FEN, san: null, uci: null });
+    goToMove(0);
+  }
+
   function setPlayerColor(color) { myColor = color; if (classifications.length) render(); if (currentPly > 0) highlightPly(currentPly); }
   function setClassifications(classResults) { classifications = classResults || []; render(); if (currentPly > 0) highlightPly(currentPly); }
 
@@ -303,7 +311,7 @@ export function createMoveList(container, onMoveSelect) {
   });
 
   return {
-    loadPgn, setClassifications, updateClassification, setPlayerColor, setHoverPly,
+    loadPgn, loadStartingPosition, setClassifications, updateClassification, setPlayerColor, setHoverPly,
     goToMove, goForward, goBack, goToStart, goToEnd,
     handleUserMove, closeHypothetical, isInHypothetical, canGoForward,
     startHypothetical, addHypotheticalMove, navigateHypothetical,
