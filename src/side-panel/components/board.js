@@ -46,6 +46,15 @@ export function createBoard(container) {
       for (const to of squares) toKeys.push(makeSquare(to));
       if (toKeys.length > 0) dests.set(makeSquare(from), toKeys);
     }
+
+    // Convert castling destinations from king-captures-rook to standard 2-square king move
+    const CASTLE_REMAP = { e1: { h1: 'g1', a1: 'c1' }, e8: { h8: 'g8', a8: 'c8' } };
+    for (const [kingSquare, remaps] of Object.entries(CASTLE_REMAP)) {
+      const kingDests = dests.get(kingSquare);
+      if (!kingDests) continue;
+      dests.set(kingSquare, kingDests.map(sq => remaps[sq] || sq));
+    }
+
     return dests;
   }
 

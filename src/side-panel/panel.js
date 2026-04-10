@@ -151,8 +151,16 @@ board.onMove((from, to) => {
 
   // Find the legal move matching from/to (handle promotions as queen by default)
   const move = { from: fromSq, to: toSq };
-  // Check if it's a pawn promotion
   const piece = chess.board.get(fromSq);
+
+  // Convert standard 2-square castling to king-captures-rook for chessops
+  if (piece?.role === 'king') {
+    const CASTLE_TO_ROOK = { e1g1: 'h1', e1c1: 'a1', e8g8: 'h8', e8c8: 'a8' };
+    const rookDest = CASTLE_TO_ROOK[from + to];
+    if (rookDest) move.to = parseSquare(rookDest);
+  }
+
+  // Check if it's a pawn promotion
   if (piece?.role === 'pawn') {
     const toRank = toSq >> 3;
     if (toRank === 0 || toRank === 7) move.promotion = 'queen';
