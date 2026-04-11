@@ -13,8 +13,61 @@ import { extractGenericPgn } from './extractors/generic.js';
 let currentExtractor = null;
 let cleanupNavigation = null;
 let cleanupClock = null;
+let runtimeAvailable = true;
+
+function isExtensionContextInvalidated(error) {
+  const message = error?.message || String(error || '');
+  return /Extension context invalidated/i.test(message);
+}
+
+function shutdownRuntime(error) {
+  if (!runtimeAvailable) return;
+  runtimeAvailable = false;
+  cleanup();
+  console.warn('chess.com.puter: content script runtime invalidated; shutting down stale observers', error);
+}
+
+async function safeSendMessage(message) {
+  if (!runtimeAvailable) return false;
+  try {
+    await chrome.runtime.sendMessage(message);
+    return true;
+  } catch (error) {
+    if (isExtensionContextInvalidated(error)) {
+      shutdownRuntime(error);
+      return false;
+    }
+    console.debug('chess.com.puter: runtime sendMessage failed', error);
+    return false;
+  }
+}
+
+function installRuntimeListener(listener) {
+  if (!runtimeAvailable) return;
+  try {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (!runtimeAvailable) return false;
+      try {
+        return listener(message, sender, sendResponse);
+      } catch (error) {
+        if (isExtensionContextInvalidated(error)) {
+          shutdownRuntime(error);
+          return false;
+        }
+        throw error;
+      }
+    });
+  } catch (error) {
+    if (isExtensionContextInvalidated(error)) {
+      shutdownRuntime(error);
+      return;
+    }
+    throw error;
+  }
+}
 
 function init() {
+  if (!runtimeAvailable) return;
   const detection = detectPlatform();
   if (!detection) return;
 
@@ -23,6 +76,7 @@ function init() {
 
   // Watch for SPA navigation (chess.com is a React SPA)
   cleanupNavigation = observeNavigation(() => {
+    if (!runtimeAvailable) return;
     cleanup();
     const newDetection = detectPlatform();
     if (newDetection) handlePage(newDetection);
@@ -30,6 +84,7 @@ function init() {
 }
 
 async function handlePage(detection) {
+  if (!runtimeAvailable) return;
   const { platform } = detection;
 
   if (platform === PLATFORM.CHESSCOM) {
@@ -42,6 +97,7 @@ async function handlePage(detection) {
 async function handleChessComPage() {
   // Wait briefly for the page to fully render (chess.com uses dynamic rendering)
   await delay(1500);
+  if (!runtimeAvailable) return;
 
   // Check if the game is over using DOM signals
   const domGameOver = isChessComGameOver();
@@ -60,7 +116,7 @@ async function handleChessComPage() {
   const metadata = getChessComMetadata();
 
   // Send game detection message
-  chrome.runtime.sendMessage({
+  const sent = await safeSendMessage({
     type: MSG.GAME_DETECTED,
     payload: {
       pgn: isGameOver ? pgn : null, // Only send PGN for completed games
@@ -70,11 +126,12 @@ async function handleChessComPage() {
       url: window.location.href,
     },
   });
+  if (!sent) return;
 
   // If game is live, start observing clocks for the live helper
   if (!isGameOver) {
     cleanupClock = startClockObserver((clockData) => {
-      chrome.runtime.sendMessage({
+      safeSendMessage({
         type: MSG.CLOCK_UPDATE,
         payload: clockData,
       });
@@ -91,6 +148,10 @@ async function handleChessComPage() {
  */
 function watchForGameEnd() {
   const interval = setInterval(async () => {
+    if (!runtimeAvailable) {
+      clearInterval(interval);
+      return;
+    }
     if (isChessComGameOver()) {
       clearInterval(interval);
       if (cleanupClock) {
@@ -100,11 +161,12 @@ function watchForGameEnd() {
 
       // Wait for the post-game UI to settle
       await delay(2000);
+      if (!runtimeAvailable) return;
 
       const pgn = await extractChessComPgn();
       const metadata = getChessComMetadata();
 
-      chrome.runtime.sendMessage({
+      await safeSendMessage({
         type: MSG.GAME_DETECTED,
         payload: {
           pgn,
@@ -134,6 +196,7 @@ function delay(ms) {
 
 async function handleLichessPage() {
   await delay(1000);
+  if (!runtimeAvailable) return;
 
   const domGameOver = isLichessGameOver();
   const pgn = await extractLichessPgn();
@@ -141,7 +204,7 @@ async function handleLichessPage() {
   const isGameOver = domGameOver || pgnGameOver;
   const metadata = getLichessMetadata();
 
-  chrome.runtime.sendMessage({
+  await safeSendMessage({
     type: MSG.GAME_DETECTED,
     payload: {
       pgn: isGameOver ? pgn : null,
@@ -154,7 +217,7 @@ async function handleLichessPage() {
 }
 
 // Listen for requests from the side panel (via service worker)
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+installRuntimeListener((message, sender, sendResponse) => {
   if (message.type === MSG.REQUEST_GAME || message.type === MSG.SCAN_PAGE) {
     const detection = detectPlatform();
     if (detection?.platform === PLATFORM.CHESSCOM) handleChessComPage();

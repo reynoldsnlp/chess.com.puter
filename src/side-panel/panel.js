@@ -256,7 +256,13 @@ function setMode(mode) {
       mode === 'live_helper' ? 'Game in progress' : 'Free the fish!';
   }
   // Board dimensions change when sections show/hide — recalculate
-  if (mode === 'analysis') requestAnimationFrame(() => board.redraw());
+  if (mode === 'analysis') scheduleBoardRedraw();
+}
+
+function scheduleBoardRedraw() {
+  // Layout shifts above the board can change its screen position without resizing it.
+  // Two animation frames ensures the new layout has committed before Chessground re-measures.
+  requestAnimationFrame(() => requestAnimationFrame(() => board.redraw()));
 }
 
 // Paste PGN (lobby)
@@ -313,6 +319,7 @@ function closeGame() {
   engineLines.clear();
   evalBar.reset();
   board.clearAutoShapes();
+  board.clearDrawShapes();
   board.setLastMove(null, null);
   board.disableInteraction();
   board.setPosition('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
@@ -414,6 +421,10 @@ async function loadGame(pgn, detectedColor) {
   playerColor = detectedColor || 'white';
   setMode('analysis');
 
+  if (analysisSummary) analysisSummary.classList.add('hidden');
+  if (progressContainer) progressContainer.classList.add('hidden');
+  scheduleBoardRedraw();
+  board.clearDrawShapes();
   moveList.loadPgn(pgn);
   moveList.setPlayerColor(playerColor);
   board.setOrientation(playerColor);
@@ -433,6 +444,7 @@ async function startSandbox() {
   playerColor = 'white';
   setMode('analysis');
 
+  board.clearDrawShapes();
   moveList.loadStartingPosition();
   moveList.setPlayerColor(playerColor);
   board.setOrientation(playerColor);
@@ -443,6 +455,7 @@ async function startSandbox() {
   evalChart.setData([], []);
   if (analysisSummary) { analysisSummary.innerHTML = ''; analysisSummary.classList.add('hidden'); }
   if (progressContainer) progressContainer.classList.add('hidden');
+  scheduleBoardRedraw();
 
   const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
   board.setPosition(startFen);
@@ -465,6 +478,7 @@ async function runFullGameAnalysis() {
   fullAnalysisRunning = true;
   if (progressContainer) progressContainer.classList.remove('hidden');
   if (analysisSummary) analysisSummary.classList.add('hidden');
+  scheduleBoardRedraw();
 
   const partialClassifications = [null]; // accumulates as analysis progresses
 
@@ -495,10 +509,10 @@ async function runFullGameAnalysis() {
     onComplete(classifications) {
       fullAnalysisRunning = false;
       if (progressContainer) progressContainer.classList.add('hidden');
-      requestAnimationFrame(() => board.redraw()); // layout changed
       moveList.setClassifications(classifications);
       gameClassifications = classifications;
       showAnalysisSummary(classifications);
+      scheduleBoardRedraw();
       evalChart.setData(classifications, positions);
       evalChart.setCurrentPly(moveList.getCurrentPly());
       engine.setMultiPV(controls.getMultiPv());
@@ -551,7 +565,7 @@ function showBoardAnnotations(ply, classification) {
   const shapes = [];
   if (classification?.engineBestMove?.length >= 4) {
     const sq = uciSquares(classification.engineBestMove);
-    shapes.push({ orig: sq.from, dest: sq.to, brush: 'green' });
+    shapes.push({ orig: sq.from, dest: sq.to, brush: 'engine' });
   }
   if (ply > 0 && classification) {
     const pos = moveList.getPosition(ply);

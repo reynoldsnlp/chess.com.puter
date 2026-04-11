@@ -10,6 +10,7 @@ export function createBoard(container) {
   let moveCallback = null;
   let interactive = false;
   let lastFen = null;
+  let drawShapes = [];
 
   const cg = Chessground(container, {
     movable: { free: false, color: undefined, events: { after: onPieceMoved } },
@@ -19,10 +20,15 @@ export function createBoard(container) {
     animation: { enabled: true, duration: 150 },
     highlight: { lastMove: true, check: true },
     drawable: {
-      enabled: false,
+      enabled: true,
       visible: true,
+      onChange(shapes) {
+        drawShapes = shapes.slice();
+      },
       brushes: {
-        green: { key: 'green', color: '#15781B', opacity: 0.4, lineWidth: 10 },
+        // Chessground uses the "green" brush for a plain right-click drag.
+        green: { key: 'green', color: '#ff8f1f', opacity: 0.65, lineWidth: 10 },
+        engine: { key: 'engine', color: '#15781B', opacity: 0.4, lineWidth: 10 },
         red: { key: 'red', color: '#882020', opacity: 0.4, lineWidth: 10 },
         blue: { key: 'blue', color: '#003088', opacity: 0.4, lineWidth: 10 },
         yellow: { key: 'yellow', color: '#e6a000', opacity: 0.4, lineWidth: 10 },
@@ -82,6 +88,8 @@ export function createBoard(container) {
       } else {
         cg.set({ fen: parts[0], turnColor, check: false });
       }
+
+      if (drawShapes.length) cg.setShapes(drawShapes);
     },
 
     /** Enable interactive mode (call once, not per move) */
@@ -122,8 +130,11 @@ export function createBoard(container) {
     setOrientation(color) { cg.set({ orientation: color }); },
     setAutoShapes(shapes) { cg.setAutoShapes(shapes); },
     clearAutoShapes() { cg.setAutoShapes([]); },
+    clearDrawShapes() {
+      drawShapes = [];
+      cg.setShapes([]);
+    },
     instance: cg,
     destroy() { resizeObs.disconnect(); cg.destroy(); },
   };
 }
-
