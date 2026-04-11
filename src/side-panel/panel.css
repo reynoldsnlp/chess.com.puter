@@ -45,7 +45,7 @@ body {
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-shrink: 0;
   gap: 12px;
 }
@@ -53,6 +53,7 @@ body {
 .header-book {
   flex: 1;
   min-width: 0;
+  margin-right: auto;
   color: #a88865;
   font-size: 12px;
   font-weight: 600;
