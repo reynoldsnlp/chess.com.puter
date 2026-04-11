@@ -5,6 +5,7 @@
 
 import { Chess } from 'chessops/chess';
 import { parseFen } from 'chessops/fen';
+import { getPrimaryOpening } from '../../shared/openings.js';
 
 /**
  * Convert centipawns to expected points (win probability, 0.0-1.0).
@@ -80,7 +81,7 @@ function expectedPointsForMover(whiteNormalizedCp, isWhiteMove) {
  * @param {number} epLoss - expected points lost (0.0-1.0)
  * @param {boolean} isBestMove - player's move matches engine's top choice
  * @param {boolean} isForced - only one legal move in the position
- * @param {boolean} isBookMove - position is in the opening book (first few moves)
+ * @param {boolean} isBookMove - resulting position is a named opening position
  */
 function classifyMove(epLoss, isBestMove, isForced, isBookMove) {
   if (isBookMove) return { classification: 'book', glyph: '', epLoss };
@@ -160,11 +161,13 @@ export async function analyzeGame(positions, sfController, options = {}) {
       const playerMoveUci = positions[ply].uci || '';
       const isBestMove = engineBestUci && playerMoveUci && engineBestUci === playerMoveUci;
       const isForced = evalBefore.legalMoveCount === 1;
-      const isBookMove = ply <= 6 && epLoss <= 0.02;
+      const opening = getPrimaryOpening(positions[ply].fen);
+      const isBookMove = Boolean(opening);
 
       const classification = classifyMove(epLoss, isBestMove, isForced, isBookMove);
       const cls = {
         ...classification,
+        opening,
         evalBefore: evalBefore.whiteNormalizedCp,
         evalAfter: evalAfter.whiteNormalizedCp,
         engineBestMove: engineBestUci,

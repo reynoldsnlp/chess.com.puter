@@ -45,9 +45,20 @@ body {
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   flex-shrink: 0;
   gap: 12px;
+}
+
+.header-book {
+  flex: 1;
+  min-width: 0;
+  color: #a88865;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header-link {
@@ -562,6 +573,16 @@ body {
   font-family: 'SF Mono', 'Fira Code', monospace;
 }
 
+.engine-line-opening {
+  flex: 0 0 140px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #a88865;
+  font-weight: 600;
+}
+
 .engine-line-eval {
   min-width: 48px;
   text-align: right;
@@ -579,10 +600,29 @@ body {
   color: var(--text-secondary);
 }
 
+.engine-line-opening-prefix {
+  display: inline-flex;
+  align-items: baseline;
+  border-top: 2px solid #a88865;
+  border-bottom: 2px solid #a88865;
+  border-left: 2px solid #a88865;
+  border-right: 2px solid #a88865;
+  border-radius: 3px;
+  background: rgba(168, 136, 101, 0.08);
+  margin-right: 2px;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
 .engine-line-num {
   color: var(--text-secondary);
   opacity: 0.6;
   font-size: 9px;
+}
+
+.engine-line-opening-num {
+  color: #a88865;
+  opacity: 1;
 }
 
 .engine-line-move {
@@ -590,6 +630,10 @@ body {
   border-radius: 2px;
   padding: 0 1px;
   transition: background 0.1s, color 0.1s;
+}
+
+.engine-line-opening-move {
+  color: #a88865;
 }
 
 .engine-line-move:hover {

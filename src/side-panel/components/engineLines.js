@@ -6,6 +6,7 @@ import { Chess } from 'chessops/chess';
 import { parseFen, makeFen } from 'chessops/fen';
 import { makeSan } from 'chessops/san';
 import { parseUci, makeUci } from 'chessops/util';
+import { getPrimaryOpening } from '../../shared/openings.js';
 
 /**
  * @param {HTMLElement} container
@@ -51,9 +52,29 @@ export function createEngineLines(container) {
     // Sort by multipv index
     const sorted = [...lines.entries()].sort((a, b) => a[0] - b[0]);
 
-    for (const [pvIndex, line] of sorted) {
+    const renderLines = sorted.map(([pvIndex, line]) => ({
+      pvIndex,
+      line,
+      moveData: uciToSanWithPositions(currentFen, line.pv),
+    }));
+
+    for (const renderLine of renderLines) {
+      renderLine.lineOpening = getLineOpeningMatch(renderLine.moveData);
+    }
+
+    const showOpeningColumn = renderLines.some((renderLine) => Boolean(renderLine.lineOpening));
+
+    for (const { pvIndex, line, moveData, lineOpening } of renderLines) {
       const div = document.createElement('div');
       div.className = 'engine-line';
+
+      if (showOpeningColumn) {
+        const openingSpan = document.createElement('span');
+        openingSpan.className = 'engine-line-opening';
+        openingSpan.textContent = lineOpening?.opening.name || '';
+        openingSpan.title = lineOpening ? `${lineOpening.opening.eco} ${lineOpening.opening.name}` : '';
+        div.appendChild(openingSpan);
+      }
 
       // Eval score
       const evalSpan = document.createElement('span');
@@ -72,17 +93,22 @@ export function createEngineLines(container) {
       const movesSpan = document.createElement('span');
       movesSpan.className = 'engine-line-moves';
 
-      const moveData = uciToSanWithPositions(currentFen, line.pv);
-
       // Determine starting fullmove number and turn from FEN
       const fenParts = currentFen ? currentFen.split(' ') : [];
       const startTurnIsBlack = fenParts[1] === 'b';
       const startFullmove = parseInt(fenParts[5], 10) || 1;
 
+      let openingPrefixSpan = null;
+      if (lineOpening?.prefixLength > 0) {
+        openingPrefixSpan = document.createElement('span');
+        openingPrefixSpan.className = 'engine-line-opening-prefix';
+      }
+
       for (let i = 0; i < moveData.length; i++) {
         const m = moveData[i];
         const isBlackMove = (startTurnIsBlack && i % 2 === 0) || (!startTurnIsBlack && i % 2 === 1);
         const isWhiteMove = !isBlackMove;
+        const inOpeningPrefix = i < (lineOpening?.prefixLength || 0);
 
         // Move number: show before white moves, or before first move if black
         if (isWhiteMove) {
@@ -90,20 +116,21 @@ export function createEngineLines(container) {
             ? startFullmove + Math.ceil((i + 1) / 2)
             : startFullmove + Math.floor(i / 2);
           const numSpan = document.createElement('span');
-          numSpan.className = 'engine-line-num';
-          numSpan.textContent = `${moveNum}.\u2009`;
-          movesSpan.appendChild(numSpan);
+          numSpan.className = inOpeningPrefix ? 'engine-line-num engine-line-opening-num' : 'engine-line-num';
+          numSpan.textContent = inOpeningPrefix ? `${moveNum}.\u00A0` : `${moveNum}.\u2009`;
+          appendMoveToken(movesSpan, openingPrefixSpan, numSpan, inOpeningPrefix);
         } else if (i === 0) {
           // First move is black: show "N..."
           const numSpan = document.createElement('span');
-          numSpan.className = 'engine-line-num';
-          numSpan.textContent = `${startFullmove}\u2026\u2009`;
-          movesSpan.appendChild(numSpan);
+          numSpan.className = inOpeningPrefix ? 'engine-line-num engine-line-opening-num' : 'engine-line-num';
+          numSpan.textContent = inOpeningPrefix ? `${startFullmove}\u2026\u00A0` : `${startFullmove}\u2026\u2009`;
+          appendMoveToken(movesSpan, openingPrefixSpan, numSpan, inOpeningPrefix);
         }
 
         const moveSpan = document.createElement('span');
-        moveSpan.className = 'engine-line-move';
-        moveSpan.textContent = m.san;
+        moveSpan.className = inOpeningPrefix ? 'engine-line-move engine-line-opening-move' : 'engine-line-move';
+        const isLastOpeningMove = lineOpening?.prefixLength === i + 1;
+        moveSpan.textContent = inOpeningPrefix && !isLastOpeningMove ? `${m.san}\u00A0` : m.san;
         moveSpan.dataset.pvIndex = pvIndex;
         moveSpan.dataset.moveIndex = i;
 
@@ -126,12 +153,18 @@ export function createEngineLines(container) {
           if (moveClickCallback) moveClickCallback(movesUpTo);
         });
 
-        movesSpan.appendChild(moveSpan);
+        appendMoveToken(movesSpan, openingPrefixSpan, moveSpan, inOpeningPrefix);
 
         // Add space between moves
         if (i < moveData.length - 1) {
-          movesSpan.appendChild(document.createTextNode(' '));
+          if (!inOpeningPrefix || isLastOpeningMove) {
+            movesSpan.appendChild(document.createTextNode(' '));
+          }
         }
+      }
+
+      if (openingPrefixSpan) {
+        movesSpan.prepend(openingPrefixSpan);
       }
 
       div.appendChild(movesSpan);
@@ -206,6 +239,26 @@ export function createEngineLines(container) {
       return lines.get(1)?.pv?.[0] || null;
     },
   };
+}
+
+function getLineOpeningMatch(moveData) {
+  for (let i = 0; i < moveData.length; i++) {
+    const opening = getPrimaryOpening(moveData[i].fen);
+    if (opening) {
+      return { opening, prefixLength: i + 1 };
+    }
+  }
+
+  return null;
+}
+
+function appendMoveToken(movesSpan, openingPrefixSpan, token, inOpeningPrefix) {
+  if (inOpeningPrefix && openingPrefixSpan) {
+    openingPrefixSpan.appendChild(token);
+    return;
+  }
+
+  movesSpan.appendChild(token);
 }
 
 /**

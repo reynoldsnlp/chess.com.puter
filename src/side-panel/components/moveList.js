@@ -59,6 +59,10 @@ export function createMoveList(container, onMoveSelect) {
   function setPlayerColor(color) { myColor = color; if (classifications.length) render(); if (currentPly > 0) highlightPly(currentPly); }
   function setClassifications(classResults) { classifications = classResults || []; render(); if (currentPly > 0) highlightPly(currentPly); }
 
+  function shouldColorizeMove(cls, mine) {
+    return Boolean(cls) && (mine || cls.classification === 'book');
+  }
+
   function updateClassification(ply, cls) {
     while (classifications.length <= ply) classifications.push(null);
     classifications[ply] = cls;
@@ -68,14 +72,12 @@ export function createMoveList(container, onMoveSelect) {
     for (const c of ['best', 'excellent', 'good', 'book', 'forced', 'inaccuracy', 'mistake', 'blunder']) {
       moveSpan.classList.remove(`move-${c}`);
     }
-    if (cls && mine) moveSpan.classList.add(`move-${cls.classification}`);
+    if (shouldColorizeMove(cls, mine)) moveSpan.classList.add(`move-${cls.classification}`);
     let displayText = positions[ply]?.san || '';
     if (cls?.glyph) displayText += cls.glyph;
     moveSpan.textContent = displayText;
     if (cls) {
-      const evalStr = (cls.evalAfter / 100).toFixed(1);
-      const epStr = cls.epLoss !== undefined ? cls.epLoss.toFixed(3) : '?';
-      moveSpan.title = `${cls.classification} (EP loss: ${epStr}) | eval: ${evalStr}`;
+      moveSpan.title = classificationTitle(cls);
     }
   }
 
@@ -99,14 +101,12 @@ export function createMoveList(container, onMoveSelect) {
       const moveSpan = document.createElement('span');
       moveSpan.className = 'move';
       moveSpan.dataset.ply = ply;
-      if (cls && mine) moveSpan.classList.add(`move-${cls.classification}`);
+      if (shouldColorizeMove(cls, mine)) moveSpan.classList.add(`move-${cls.classification}`);
       let displayText = san;
       if (cls?.glyph) displayText += cls.glyph;
       moveSpan.textContent = displayText;
       if (cls) {
-        const evalStr = (cls.evalAfter / 100).toFixed(1);
-        const epStr = cls.epLoss !== undefined ? cls.epLoss.toFixed(3) : '?';
-        moveSpan.title = `${cls.classification} (EP loss: ${epStr}) | eval: ${evalStr}`;
+        moveSpan.title = classificationTitle(cls);
       }
       moveSpan.addEventListener('click', () => { closeHypothetical(); goToMove(ply); });
       container.appendChild(moveSpan);
@@ -321,10 +321,22 @@ export function createMoveList(container, onMoveSelect) {
     getClassification: (ply) => classifications[ply] || null,
     getTotalPlies: () => positions.length - 1,
     getAllPositions: () => positions,
+    getCurrentPathPositions() {
+      const path = positions.slice(0, currentPly + 1);
+      if (hypo) path.push(...hypo.moves.slice(0, hypo.currentIndex + 1));
+      return path;
+    },
     /** Get the current FEN (main line or hypothetical) */
     getCurrentFen() {
       if (hypo) return hypo.moves[hypo.currentIndex]?.fen;
       return positions[currentPly]?.fen;
     },
   };
+}
+
+function classificationTitle(cls) {
+  const evalStr = (cls.evalAfter / 100).toFixed(1);
+  const epStr = cls.epLoss !== undefined ? cls.epLoss.toFixed(3) : '?';
+  const openingStr = cls.opening?.name ? ` | opening: ${cls.opening.name}` : '';
+  return `${cls.classification} (EP loss: ${epStr}) | eval: ${evalStr}${openingStr}`;
 }

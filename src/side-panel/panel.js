@@ -17,6 +17,7 @@ import { makeSan } from 'chessops/san';
 import { parseSquare, makeUci as chessopsUci } from 'chessops/util';
 import { analyzeGame, gameAccuracy } from './engine/gameAnalyzer.js';
 import { createEvalChart } from './components/evalChart.js';
+import { getLatestCompletedOpening } from '../shared/openings.js';
 
 const CLASS_SYMBOL = {
   best: '★', excellent: '➕', good: '✔', book: '📖', forced: '→',
@@ -52,6 +53,7 @@ const pgnWarning = document.getElementById('pgn-warning');
 
 // --- DOM: Header (game loaded) ---
 const header = document.getElementById('header');
+const headerBook = document.getElementById('header-book');
 const btnCloseGame = document.getElementById('btn-close-game');
 
 // --- DOM: Analysis ---
@@ -69,9 +71,11 @@ const evalBar = createEvalBar(document.getElementById('eval-bar'));
 
 const moveList = createMoveList(document.getElementById('move-list'), (ply, fen, classification, hypoUci) => {
   const inHypo = ply === -1;
+  const completedBookOpening = getLatestCompletedOpening(moveList.getCurrentPathPositions());
 
   board.setPosition(fen);
   currentAnalysisFen = fen;
+  updateHeaderBookLabel(completedBookOpening);
 
   if (inHypo && hypoUci) {
     // Hypothetical move: light blue highlight
@@ -313,6 +317,7 @@ function closeGame() {
   currentPgn = null;
   gameClassifications = null;
   currentAnalysisFen = null;
+  updateHeaderBookLabel(null);
 
   // Clear all analysis components
   engineLines.clear();
@@ -598,6 +603,21 @@ function showHypoBestMoveArrow() {
   if (!controls.isEngineOn() || !hypoBestAlternative?.length) { board.clearAutoShapes(); return; }
   const sq = uciSquares(hypoBestAlternative);
   board.setAutoShapes([{ orig: sq.from, dest: sq.to, brush: 'lightblue' }]);
+}
+
+function updateHeaderBookLabel(opening) {
+  if (!headerBook) return;
+
+  if (!opening) {
+    headerBook.textContent = '';
+    headerBook.title = '';
+    headerBook.classList.add('hidden');
+    return;
+  }
+
+  headerBook.textContent = `Book: ${opening.name}`;
+  headerBook.title = `${opening.eco} ${opening.name}`;
+  headerBook.classList.remove('hidden');
 }
 
 // ============================================================

@@ -44,6 +44,7 @@ const commonOptions = {
   target: 'chrome120',
   sourcemap: watching ? 'inline' : false,
   minify: !watching,
+  loader: { '.tsv': 'text' },
 };
 
 const entryPoints = [
