@@ -187,7 +187,6 @@ const controls = createControls(document.getElementById('control-bar'), {
   onGoBack: () => moveList.goBack(),
   onGoForward: () => moveList.goForward(),
   onGoEnd: () => moveList.goToEnd(),
-  getCurrentPgn: () => currentPgn,
 });
 
 const evalChart = createEvalChart(document.getElementById('eval-chart'));

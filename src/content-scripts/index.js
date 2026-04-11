@@ -101,14 +101,11 @@ async function handleChessComPage() {
 
   // Check if the game is over using DOM signals
   const domGameOver = isChessComGameOver();
-  console.log('chess.com.puter: DOM game over:', domGameOver);
 
   // Try to extract PGN
   const pgn = await extractChessComPgn();
-  console.log('chess.com.puter: extracted PGN:', pgn ? pgn.substring(0, 100) + '...' : null);
 
   const pgnGameOver = pgn ? isGameComplete(pgn) : false;
-  console.log('chess.com.puter: PGN game over:', pgnGameOver);
 
   const isGameOver = domGameOver || pgnGameOver;
 

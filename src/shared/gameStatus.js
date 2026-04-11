@@ -52,7 +52,6 @@ export function isChessComGameOver() {
   ];
   for (const selector of dataCySelectors) {
     if (document.querySelector(selector)) {
-      console.log('chess.com.puter: game over via data-cy:', selector);
       return true;
     }
   }
@@ -67,7 +66,6 @@ export function isChessComGameOver() {
   ];
   for (const selector of classSelectors) {
     if (document.querySelector(selector)) {
-      console.log('chess.com.puter: game over via class:', selector);
       return true;
     }
   }
@@ -80,7 +78,6 @@ export function isChessComGameOver() {
   ];
   for (const selector of ariaSelectors) {
     if (document.querySelector(selector)) {
-      console.log('chess.com.puter: game over via aria/href:', selector);
       return true;
     }
   }
@@ -88,10 +85,8 @@ export function isChessComGameOver() {
   // Strategy 4: URL is a game review/analysis page
   const pathname = window.location.pathname;
   if (/^\/analysis\/game\//.test(pathname)) {
-    console.log('chess.com.puter: game over via analysis URL');
     return true;
   }
 
-  console.log('chess.com.puter: no game-over indicators found');
   return false;
 }

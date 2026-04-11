@@ -1,8 +1,7 @@
 // Controls bar component.
-// Depth, multi-PV, navigation, flip, Open in Lichess, engine toggle.
+// Depth, multi-PV, navigation, flip, engine toggle.
 
-import { MSG } from '../../shared/messages.js';
-import { DEFAULT_DEPTH, DEFAULT_MULTI_PV, MAX_DEPTH, MAX_MULTI_PV, LICHESS_ANALYSIS_URL } from '../../shared/constants.js';
+import { DEFAULT_DEPTH, DEFAULT_MULTI_PV, MAX_DEPTH, MAX_MULTI_PV } from '../../shared/constants.js';
 
 /**
  * @param {HTMLElement} container
@@ -15,7 +14,6 @@ import { DEFAULT_DEPTH, DEFAULT_MULTI_PV, MAX_DEPTH, MAX_MULTI_PV, LICHESS_ANALY
  * @param {() => void} callbacks.onGoBack
  * @param {() => void} callbacks.onGoForward
  * @param {() => void} callbacks.onGoEnd
- * @param {() => string} callbacks.getCurrentPgn - returns current PGN for Open in Lichess
  */
 export function createControls(container, callbacks) {
   let depth = DEFAULT_DEPTH;
@@ -50,7 +48,6 @@ export function createControls(container, callbacks) {
       </div>
     </div>
     <div class="controls-actions">
-      <button class="ctrl-btn" id="btn-lichess" title="Open in Lichess">Open in Lichess</button>
       <button class="ctrl-btn" id="btn-flip" title="Flip board">Flip</button>
       <button class="ctrl-btn" id="btn-engine" title="Toggle engine">Engine: ON</button>
     </div>
@@ -92,16 +89,6 @@ export function createControls(container, callbacks) {
     pvValue.textContent = multiPv;
     savePrefs();
     callbacks.onMultiPvChange(multiPv);
-  });
-
-  // Open in Lichess
-  container.querySelector('#btn-lichess').addEventListener('click', () => {
-    const pgn = callbacks.getCurrentPgn?.() || '';
-    // Extract just the movetext (strip headers)
-    const movetext = pgn.replace(/\[[^\]]*\]\s*/g, '').replace(/\s+/g, ' ').trim();
-    const encoded = movetext.replace(/ /g, '_');
-    const url = `${LICHESS_ANALYSIS_URL}/pgn/${encoded}`;
-    chrome.runtime.sendMessage({ type: MSG.OPEN_IN_LICHESS, payload: { url } });
   });
 
   // Flip

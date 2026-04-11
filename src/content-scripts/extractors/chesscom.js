@@ -10,25 +10,21 @@ export async function extractChessComPgn() {
   // Strategy A: DOM move list scraping (most reliable for current chess.com)
   const scrapedPgn = tryMoveListScrape();
   if (scrapedPgn) {
-    console.log('chess.com.puter: PGN extracted via move list scrape');
     return scrapedPgn;
   }
 
   // Strategy B: Share dialog PGN textarea
   const sharePgn = await tryShareDialog();
   if (sharePgn) {
-    console.log('chess.com.puter: PGN extracted via share dialog');
     return sharePgn;
   }
 
   // Strategy C: Embedded script data
   const scriptPgn = tryScriptData();
   if (scriptPgn) {
-    console.log('chess.com.puter: PGN extracted via script data');
     return scriptPgn;
   }
 
-  console.log('chess.com.puter: all PGN extraction strategies failed');
   return null;
 }
 
@@ -43,7 +39,6 @@ function tryMoveListScrape() {
   ]);
 
   if (!moveListContainer) {
-    console.log('chess.com.puter: no move list container found');
     return null;
   }
 
@@ -53,7 +48,6 @@ function tryMoveListScrape() {
   const nodeElements = moveListContainer.querySelectorAll('.node');
 
   if (nodeElements.length === 0) {
-    console.log('chess.com.puter: no .node elements found in move list');
     return null;
   }
 
@@ -64,7 +58,6 @@ function tryMoveListScrape() {
   }
 
   if (moves.length === 0) {
-    console.log('chess.com.puter: no moves extracted from nodes');
     return null;
   }
 
@@ -81,7 +74,6 @@ function tryMoveListScrape() {
   const result = findGameResult();
   if (result) pgn += result;
 
-  console.log('chess.com.puter: scraped', moves.length, 'moves');
   return pgn.trim() || null;
 }
 
@@ -238,7 +230,6 @@ export function getChessComMetadata() {
     if (rating) metadata[key].rating = rating.textContent?.replace(/[()]/g, '').trim();
   }
 
-  console.log('chess.com.puter: detected playerColor:', metadata.playerColor);
   return metadata;
 }
 
