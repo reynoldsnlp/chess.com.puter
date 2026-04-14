@@ -14,6 +14,10 @@ let currentExtractor = null;
 let cleanupNavigation = null;
 let cleanupClock = null;
 let runtimeAvailable = true;
+let lastChessComPayload = null;
+let liveWatchUrl = null;
+let liveWatchPlayerColor = null;
+let chessComScanInFlight = false;
 
 function isExtensionContextInvalidated(error) {
   const message = error?.message || String(error || '');
@@ -95,47 +99,66 @@ async function handlePage(detection) {
 }
 
 async function handleChessComPage() {
+  return handleChessComScan();
+}
+
+async function handleChessComScan(options = {}) {
+  const { skipDelay = false, allowCachedState = false, forceFullExtract = false } = options;
+  if (chessComScanInFlight) return;
+  chessComScanInFlight = true;
+
+  try {
   // Wait briefly for the page to fully render (chess.com uses dynamic rendering)
-  await delay(1500);
-  if (!runtimeAvailable) return;
+    if (!skipDelay) await delay(1500);
+    if (!runtimeAvailable) return;
 
-  // Check if the game is over using DOM signals
-  const domGameOver = isChessComGameOver();
+    const url = window.location.href;
+    const metadata = getChessComMetadata();
+    const cachedPayload = lastChessComPayload?.url === url ? lastChessComPayload : null;
+    const domGameOver = isChessComGameOver();
 
-  // Try to extract PGN
-  const pgn = await extractChessComPgn();
+    if (allowCachedState && cachedPayload?.isGameOver && !forceFullExtract) {
+      const sent = await safeSendMessage({
+        type: MSG.GAME_DETECTED,
+        payload: cachedPayload,
+      });
+      if (sent) cleanupLiveObservers();
+      return;
+    }
 
-  const pgnGameOver = pgn ? isGameComplete(pgn) : false;
+    if (allowCachedState && cachedPayload && !cachedPayload.isGameOver && !domGameOver && !forceFullExtract) {
+      const sent = await sendChessComPayload({
+        pgn: null,
+        isGameOver: false,
+        metadata,
+        platform: PLATFORM.CHESSCOM,
+        url,
+      });
+      if (!sent) return;
+      ensureLiveObservers(metadata.playerColor, url);
+      return;
+    }
 
-  const isGameOver = domGameOver || pgnGameOver;
+    if (domGameOver) cleanupLiveObservers();
 
-  // Get player metadata
-  const metadata = getChessComMetadata();
+    // Full PGN extraction is expensive; avoid it on repeated live rescans.
+    const pgn = await extractChessComPgn();
+    const pgnGameOver = pgn ? isGameComplete(pgn) : false;
+    const isGameOver = domGameOver || pgnGameOver;
 
-  // Send game detection message
-  const sent = await safeSendMessage({
-    type: MSG.GAME_DETECTED,
-    payload: {
+    const sent = await sendChessComPayload({
       pgn: isGameOver ? pgn : null, // Only send PGN for completed games
       isGameOver,
       metadata,
       platform: PLATFORM.CHESSCOM,
-      url: window.location.href,
-    },
-  });
-  if (!sent) return;
-
-  // If game is live, start observing clocks for the live helper
-  if (!isGameOver) {
-    cleanupClock = startClockObserver((clockData) => {
-      safeSendMessage({
-        type: MSG.CLOCK_UPDATE,
-        payload: clockData,
-      });
+      url,
     });
+    if (!sent) return;
 
-    // Also watch for the game to end, then re-extract
-    watchForGameEnd();
+    if (isGameOver) cleanupLiveObservers();
+    else ensureLiveObservers(metadata.playerColor, url);
+  } finally {
+    chessComScanInFlight = false;
   }
 }
 
@@ -143,48 +166,65 @@ async function handleChessComPage() {
  * Poll for game-over state during a live game.
  * When the game ends, re-extract PGN and send a new GAME_DETECTED message.
  */
-function watchForGameEnd() {
+function ensureLiveObservers(playerColor, url) {
+  if (liveWatchUrl && liveWatchUrl !== url) cleanupLiveObservers();
+
+  if (!cleanupClock || liveWatchPlayerColor !== playerColor) {
+    if (cleanupClock) cleanupClock();
+    cleanupClock = startClockObserver((clockData) => {
+      safeSendMessage({
+        type: MSG.CLOCK_UPDATE,
+        payload: clockData,
+      });
+    }, playerColor);
+    liveWatchPlayerColor = playerColor;
+  }
+
+  if (currentExtractor) {
+    liveWatchUrl = url;
+    return;
+  }
+
   const interval = setInterval(async () => {
     if (!runtimeAvailable) {
-      clearInterval(interval);
+      cleanupLiveObservers();
       return;
     }
-    if (isChessComGameOver()) {
-      clearInterval(interval);
-      if (cleanupClock) {
-        cleanupClock();
-        cleanupClock = null;
-      }
+    if (!isChessComGameOver()) return;
+    cleanupLiveObservers();
 
-      // Wait for the post-game UI to settle
-      await delay(2000);
-      if (!runtimeAvailable) return;
+    // Wait for the post-game UI to settle before the one expensive extraction.
+    await delay(2000);
+    if (!runtimeAvailable) return;
 
-      const pgn = await extractChessComPgn();
-      const metadata = getChessComMetadata();
-
-      await safeSendMessage({
-        type: MSG.GAME_DETECTED,
-        payload: {
-          pgn,
-          isGameOver: true,
-          metadata,
-          platform: PLATFORM.CHESSCOM,
-          url: window.location.href,
-        },
-      });
-    }
+    await handleChessComScan({ skipDelay: true, forceFullExtract: true });
   }, 3000);
 
-  // Store for cleanup
   currentExtractor = { cleanup: () => clearInterval(interval) };
+  liveWatchUrl = url;
 }
 
-function cleanup() {
+async function sendChessComPayload(payload) {
+  const sent = await safeSendMessage({
+    type: MSG.GAME_DETECTED,
+    payload,
+  });
+  if (sent) lastChessComPayload = payload;
+  return sent;
+}
+
+function cleanupLiveObservers() {
   if (currentExtractor?.cleanup) currentExtractor.cleanup();
   if (cleanupClock) cleanupClock();
   currentExtractor = null;
   cleanupClock = null;
+  liveWatchUrl = null;
+  liveWatchPlayerColor = null;
+}
+
+function cleanup() {
+  cleanupLiveObservers();
+  lastChessComPayload = null;
 }
 
 function delay(ms) {
@@ -217,7 +257,7 @@ async function handleLichessPage() {
 installRuntimeListener((message, sender, sendResponse) => {
   if (message.type === MSG.REQUEST_GAME || message.type === MSG.SCAN_PAGE) {
     const detection = detectPlatform();
-    if (detection?.platform === PLATFORM.CHESSCOM) handleChessComPage();
+    if (detection?.platform === PLATFORM.CHESSCOM) handleChessComScan({ skipDelay: true, allowCachedState: true });
     else if (detection?.platform === PLATFORM.LICHESS) handleLichessPage();
   }
 });

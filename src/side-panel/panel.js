@@ -35,6 +35,8 @@ let fullAnalysisRunning = false;
 let playerColor = 'white';
 let pendingScanData = null; // game data from last scan (not yet imported)
 let savedAnalysisState = null; // analysis state saved when switching to live mode
+let liveHelperPreviousMode = 'lobby';
+let liveHelperForced = false;
 let liveGameTabId = null; // tab that triggered the live-helper mode
 
 // --- DOM: Lobby ---
@@ -42,6 +44,7 @@ const lobby = document.getElementById('lobby');
 const lobbyImportBtn = document.getElementById('lobby-import');
 const lobbyPasteBtn = document.getElementById('lobby-paste');
 const lobbySandboxBtn = document.getElementById('lobby-sandbox');
+const lobbyLiveHelperBtn = document.getElementById('lobby-live-helper');
 const lobbyRefreshBtn = document.getElementById('lobby-refresh');
 const lobbySpinner = document.getElementById('lobby-spinner');
 const lobbyStatus = document.getElementById('lobby-status');
@@ -248,18 +251,27 @@ board.onMove((from, to) => {
 // ============================================================
 
 function setMode(mode) {
+  const prevMode = currentMode;
+  if (prevMode === 'live_helper' && mode !== 'live_helper') liveHelper.deactivate();
+
   currentMode = mode;
   lobby.classList.toggle('hidden', mode !== 'lobby');
   header.classList.toggle('hidden', mode === 'lobby');
   analysisSection.classList.toggle('hidden', mode !== 'analysis');
   liveSection.classList.toggle('hidden', mode !== 'live_helper');
+  if (btnCloseGame) btnCloseGame.textContent = mode === 'live_helper' ? '\u00d7 Close helper' : '\u00d7 Close game';
+  if (headerBook) {
+    if (mode !== 'analysis') headerBook.classList.add('hidden');
+    else if (headerBook.textContent) headerBook.classList.remove('hidden');
+  }
   if (statusBar) {
     statusBar.querySelector('.status-text').textContent =
       mode === 'analysis' ? 'Free the fish!' :
-      mode === 'live_helper' ? 'Game in progress' : 'Free the fish!';
+      mode === 'live_helper' ? 'Become one with your inner fish' : 'Free the fish!';
   }
   // Board dimensions change when sections show/hide — recalculate
   if (mode === 'analysis') scheduleBoardRedraw();
+  if (mode === 'live_helper' && prevMode !== 'live_helper') liveHelper.activate();
 }
 
 function scheduleBoardRedraw() {
@@ -277,6 +289,10 @@ lobbyPasteBtn.addEventListener('click', () => {
 // Sandbox (lobby)
 lobbySandboxBtn.addEventListener('click', () => {
   startSandbox();
+});
+
+lobbyLiveHelperBtn.addEventListener('click', () => {
+  openManualLiveHelper();
 });
 
 pgnCancelBtn.addEventListener('click', () => {
@@ -307,7 +323,8 @@ lobbyRefreshBtn.addEventListener('click', () => scanPage());
 // Close game → return to lobby
 btnCloseGame.addEventListener('click', (e) => {
   e.preventDefault();
-  closeGame();
+  if (currentMode === 'live_helper') closeLiveHelper();
+  else closeGame();
 });
 
 function closeGame() {
@@ -392,7 +409,7 @@ function receiveScanResult(payload) {
   } else if (mode === 'live_helper') {
     pendingScanData = null;
     lobbyImportBtn.disabled = true;
-    lobbyStatus.textContent = 'Game in progress. Analysis available after the game ends.';
+    lobbyStatus.textContent = 'Game in progress. Open live helper now, or wait for analysis after the game ends.';
   } else {
     pendingScanData = null;
     lobbyImportBtn.disabled = true;
@@ -440,12 +457,12 @@ async function loadGame(pgn, detectedColor) {
   await runFullGameAnalysis();
 }
 
-async function startSandbox() {
+async function startSandbox(initialColor = 'white') {
   fullAnalysisCancelled = true;
   fullAnalysisRunning = false;
   currentPgn = null;
   gameClassifications = null;
-  playerColor = 'white';
+  playerColor = initialColor || 'white';
   setMode('analysis');
 
   board.clearDrawShapes();
@@ -453,8 +470,8 @@ async function startSandbox() {
   moveList.setPlayerColor(playerColor);
   board.setOrientation(playerColor);
   board.enableInteraction();
-  evalBar.setFlipped(false);
-  evalChart.setFlipped(false);
+  evalBar.setFlipped(playerColor === 'black');
+  evalChart.setFlipped(playerColor === 'black');
   evalChart.setPlayerColor(playerColor);
   evalChart.setData([], []);
   if (analysisSummary) { analysisSummary.innerHTML = ''; analysisSummary.classList.add('hidden'); }
@@ -667,13 +684,14 @@ chrome.runtime.onMessage.addListener((message) => {
     const payload = message.payload;
 
     if (payload.mode === 'live_helper') {
-      // Live game detected in any tab — switch regardless of current mode
-      if (currentMode !== 'live_helper') {
-        handleLiveGameDetected(payload);
-      }
+      if (currentMode === 'live_helper') {
+        if (!liveGameTabId || payload.tabId === liveGameTabId) {
+          liveGameTabId = payload.tabId || liveGameTabId;
+          liveHelper.setMetadata(payload.metadata);
+        }
+      } else handleLiveGameDetected(payload);
     } else if (currentMode === 'live_helper') {
-      // We are in live mode — check if the tracked live game has ended
-      if (!liveGameTabId || payload.tabId === liveGameTabId) {
+      if (liveHelperForced && (!liveGameTabId || payload.tabId === liveGameTabId)) {
         handleLiveGameEnded(payload);
       }
     } else if (currentMode === 'lobby') {
@@ -701,56 +719,126 @@ chrome.tabs?.onActivated?.addListener?.(() => {
 // LIVE GAME DETECTION (any tab)
 // ============================================================
 
-/**
- * A live game was detected in some tab. Save current analysis (if any)
- * and switch to the live-helper view.
- */
-function handleLiveGameDetected(payload) {
-  liveGameTabId = payload.tabId || null;
+async function openManualLiveHelper() {
+  if (currentMode === 'live_helper') return;
 
-  // Save analysis state so we can restore it after the game
-  if (currentMode === 'analysis' && currentPgn) {
-    savedAnalysisState = {
-      pgn: currentPgn,
-      playerColor,
-      gameClassifications,
-      currentPly: moveList.getCurrentPly(),
-    };
-    fullAnalysisCancelled = true;
-    fullAnalysisRunning = false;
-    if (engine) engine.stop();
-  } else {
-    savedAnalysisState = null;
+  liveHelperPreviousMode = currentMode;
+  savedAnalysisState = currentMode === 'analysis' ? captureAnalysisState() : null;
+  liveHelperForced = false;
+  liveGameTabId = null;
+
+  if (currentMode === 'analysis') suspendAnalysisForLiveHelper();
+
+  liveHelper.reset();
+  setMode('live_helper');
+
+  try {
+    const response = await chrome.runtime.sendMessage({ type: MSG.REQUEST_GAME });
+    const payload = response?.payload;
+    if (payload?.mode === 'live_helper') {
+      liveGameTabId = payload.tabId || null;
+      liveHelper.setMetadata(payload.metadata);
+    }
+  } catch (e) {}
+}
+
+function handleLiveGameDetected(payload) {
+  if (currentMode === 'live_helper') {
+    liveGameTabId = payload.tabId || liveGameTabId;
+    liveHelper.setMetadata(payload.metadata);
+    return;
   }
 
+  liveHelperPreviousMode = currentMode;
+  savedAnalysisState = currentMode === 'analysis' ? captureAnalysisState() : null;
+  liveHelperForced = true;
+  liveGameTabId = payload.tabId || null;
+
+  if (currentMode === 'analysis') suspendAnalysisForLiveHelper();
+
+  liveHelper.reset(payload.metadata);
   setMode('live_helper');
   liveHelper.setMetadata(payload.metadata);
 }
 
-/**
- * The tracked live game ended (or its tab closed).
- * Restore the previous analysis state or fall back to the lobby.
- */
 function handleLiveGameEnded(payload) {
-  liveGameTabId = null;
+  if (!liveHelperForced) return;
+  const restoreMode = liveHelperPreviousMode;
+  const restoreState = savedAnalysisState;
 
-  if (savedAnalysisState) {
-    restoreAnalysisState(savedAnalysisState);
-    savedAnalysisState = null;
+  liveGameTabId = null;
+  liveHelperForced = false;
+  liveHelperPreviousMode = 'lobby';
+  savedAnalysisState = null;
+
+  if (restoreMode === 'analysis' && restoreState) {
+    restoreAnalysisState(restoreState);
   } else {
     setMode('lobby');
     receiveScanResult(payload);
   }
 }
 
-/**
- * Rebuild the analysis view from a previously-saved snapshot.
- */
+function closeLiveHelper() {
+  const restoreMode = liveHelperPreviousMode;
+  const restoreState = savedAnalysisState;
+
+  liveGameTabId = null;
+  liveHelperForced = false;
+  liveHelperPreviousMode = 'lobby';
+  savedAnalysisState = null;
+
+  if (restoreMode === 'analysis' && restoreState) {
+    restoreAnalysisState(restoreState);
+  } else {
+    setMode('lobby');
+    scanPage();
+  }
+}
+
+function captureAnalysisState() {
+  if (currentMode !== 'analysis') return null;
+
+  if (currentPgn) {
+    return {
+      kind: 'pgn',
+      pgn: currentPgn,
+      playerColor,
+      gameClassifications,
+      currentPly: moveList.getCurrentPly(),
+      rerunFullAnalysis: fullAnalysisRunning,
+    };
+  }
+
+  return {
+    kind: 'sandbox',
+    playerColor,
+  };
+}
+
+function suspendAnalysisForLiveHelper() {
+  fullAnalysisCancelled = true;
+  fullAnalysisRunning = false;
+  if (engine) engine.stop();
+}
+
 function restoreAnalysisState(state) {
+  if (!state) {
+    setMode('lobby');
+    scanPage();
+    return;
+  }
+
+  if (state.kind === 'sandbox') {
+    startSandbox(state.playerColor);
+    return;
+  }
+
   currentPgn = state.pgn;
   playerColor = state.playerColor;
+  gameClassifications = null;
   fullAnalysisCancelled = false;
-  fullAnalysisRunning = false;
+  fullAnalysisRunning = Boolean(state.rerunFullAnalysis);
 
   setMode('analysis');
 
@@ -769,10 +857,18 @@ function restoreAnalysisState(state) {
     evalChart.setData(state.gameClassifications, positions);
     evalChart.setCurrentPly(state.currentPly || 0);
     showAnalysisSummary(state.gameClassifications);
+  } else {
+    evalChart.setData([], []);
+    evalChart.setCurrentPly(state.currentPly || 0);
+    if (analysisSummary) {
+      analysisSummary.innerHTML = '';
+      analysisSummary.classList.add('hidden');
+    }
   }
 
   if (state.currentPly > 0) moveList.goToMove(state.currentPly);
 
   const pos = moveList.getPosition(moveList.getCurrentPly());
-  if (pos) analyzePosition(pos.fen);
+  if (state.rerunFullAnalysis) runFullGameAnalysis();
+  else if (pos) analyzePosition(pos.fen);
 }

@@ -235,17 +235,36 @@ export function getChessComMetadata() {
 
 // --- Clock Observer ---
 
-export function startClockObserver(callback) {
+export function startClockObserver(callback, playerColor = 'white') {
+  let lastKey = '';
+
   const interval = setInterval(() => {
-    const clocks = document.querySelectorAll('[data-cy="clock-time"]');
-    if (clocks.length >= 2) {
-      const times = Array.from(clocks).map((c) => c.textContent?.trim() || '?');
-      callback({
-        whiteTime: times[1] || '?',
-        blackTime: times[0] || '?',
-        playerColor: 'white',
-      });
+    const whiteClock = document.querySelector('.clock-white [data-cy="clock-time"], .clock-white[data-cy="clock-time"]');
+    const blackClock = document.querySelector('.clock-black [data-cy="clock-time"], .clock-black[data-cy="clock-time"]');
+
+    if (whiteClock && blackClock) {
+      const payload = {
+        whiteTime: whiteClock.textContent?.trim() || '?',
+        blackTime: blackClock.textContent?.trim() || '?',
+        playerColor,
+      };
+      const nextKey = `${payload.whiteTime}|${payload.blackTime}|${payload.playerColor}`;
+      if (nextKey === lastKey) return;
+      lastKey = nextKey;
+      callback(payload);
+      return;
     }
+
+    const clocks = document.querySelectorAll('[data-cy="clock-time"]');
+    if (clocks.length < 2) return;
+
+    const times = Array.from(clocks).map((c) => c.textContent?.trim() || '?');
+    const whiteTime = playerColor === 'black' ? times[0] || '?' : times[1] || '?';
+    const blackTime = playerColor === 'black' ? times[1] || '?' : times[0] || '?';
+    const nextKey = `${whiteTime}|${blackTime}|${playerColor}`;
+    if (nextKey === lastKey) return;
+    lastKey = nextKey;
+    callback({ whiteTime, blackTime, playerColor });
   }, 1000);
 
   return () => clearInterval(interval);
