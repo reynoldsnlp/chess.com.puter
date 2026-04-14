@@ -6,8 +6,9 @@ import { formatEvalScore, whitePerspectiveScoreSign } from '../evalUtils.js';
 export function createEvalBar(container) {
   container.innerHTML = `
     <div class="eval-bar-track">
-      <div class="eval-bar-fill"></div>
-      <div class="eval-bar-label">0.0</div>
+      <div class="eval-bar-fill" data-label-placement="inside">
+        <div class="eval-bar-label">0.0</div>
+      </div>
     </div>
   `;
 
@@ -16,6 +17,12 @@ export function createEvalBar(container) {
   const label = container.querySelector('.eval-bar-label');
   let flipped = false;
   let lastScore = null;
+  const LABEL_PADDING_PX = 6;
+
+  function updateLabelPlacement() {
+    const hasRoomInside = fill.getBoundingClientRect().height >= label.getBoundingClientRect().height + LABEL_PADDING_PX;
+    fill.dataset.labelPlacement = hasRoomInside ? 'inside' : 'outside';
+  }
 
   function render() {
     const score = lastScore;
@@ -39,17 +46,14 @@ export function createEvalBar(container) {
     // Flipped: bar is rotated so black is at bottom. Use CSS transform.
     fill.style.height = pct + '%';
     label.textContent = text;
-
-    if (pct > 50) {
-      label.style.bottom = 'auto';
-      label.style.top = (100 - pct + 2) + '%';
-      label.style.color = 'var(--eval-black)';
-    } else {
-      label.style.top = 'auto';
-      label.style.bottom = (pct + 2) + '%';
-      label.style.color = 'var(--eval-white)';
-    }
+    updateLabelPlacement();
   }
+
+  const resizeObserver = new ResizeObserver(() => {
+    if (!fill.isConnected) return;
+    updateLabelPlacement();
+  });
+  resizeObserver.observe(track);
 
   return {
     update(score) {
@@ -62,9 +66,7 @@ export function createEvalBar(container) {
       lastScore = null;
       fill.style.height = '50%';
       label.textContent = '0.0';
-      label.style.top = 'auto';
-      label.style.bottom = '52%';
-      label.style.color = 'var(--eval-white)';
+      updateLabelPlacement();
     },
 
     setFlipped(f) {
@@ -75,6 +77,10 @@ export function createEvalBar(container) {
       // flipped=true means black is at bottom of board → rotate so black side is at bottom of bar
       track.style.transform = flipped ? 'rotate(180deg)' : '';
       label.style.transform = flipped ? 'rotate(180deg)' : '';
+    },
+
+    destroy() {
+      resizeObserver.disconnect();
     },
   };
 }

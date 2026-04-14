@@ -93,20 +93,15 @@ const moveList = createMoveList(document.getElementById('move-list'), (ply, fen,
   }
 
   if (!inHypo) {
-    hypoBestAlternative = null;
     showBoardAnnotations(ply, classification);
     evalChart.setCurrentPly(ply);
     if (classification) evalBar.update(classification.evalAfterScore || { type: 'cp', value: classification.evalAfter });
     else evalBar.reset();
-  } else {
-    // Capture the best move from the *previous* position's analysis
-    // before clearing — this is the best alternative to the move just played.
-    hypoBestAlternative = engineLines.getBestMove();
-    showHypoBestMoveArrow();
   }
 
   engineLines.clear();
   engineLines.setFen(fen);
+  if (inHypo) showHypoBestMoveArrow();
   analyzePosition(fen);
 });
 
@@ -159,24 +154,28 @@ engineLines.onMoveClick((moves) => {
     }
   }
   moveList.navigateHypothetical(moveList.getHypoLength() - 1);
-
-  // Show the last clicked move as the best-move arrow
-  const lastMove = moves[moves.length - 1];
-  if (lastMove?.uci) {
-    const sq = uciSquares(lastMove.uci);
-    board.setAutoShapes([{ orig: sq.from, dest: sq.to, brush: 'lightblue' }]);
-  }
 });
 
+function getCurrentAnalysisFen() {
+  return moveList.getCurrentFen();
+}
+
 const controls = createControls(document.getElementById('control-bar'), {
-  onDepthChange: (d) => { const p = moveList.getPosition(moveList.getCurrentPly()); if (p && engine?.isReady()) { engineLines.clear(); engine.analyze(p.fen, d); } },
+  onDepthChange: () => {
+    const fen = getCurrentAnalysisFen();
+    if (!fen) return;
+    engineLines.clear();
+    if (moveList.isInHypothetical()) showHypoBestMoveArrow();
+    analyzePosition(fen);
+  },
   onMultiPvChange: (n) => {
     engineLines.setMaxLines(n);
-    if (engine?.isReady()) {
-      engine.setMultiPV(n);
-      const p = moveList.getPosition(moveList.getCurrentPly());
-      if (p) { engineLines.clear(); engine.analyze(p.fen, controls.getDepth()); }
-    }
+    if (engine?.isReady()) engine.setMultiPV(n);
+    const fen = getCurrentAnalysisFen();
+    if (!fen) return;
+    engineLines.clear();
+    if (moveList.isInHypothetical()) showHypoBestMoveArrow();
+    analyzePosition(fen);
   },
   onFlip: () => {
     board.flip();
@@ -189,7 +188,10 @@ const controls = createControls(document.getElementById('control-bar'), {
   },
   onEngineToggle: (on) => {
     if (!on && engine) { engine.stop(); engineLines.clear(); evalBar.reset(); board.clearAutoShapes(); }
-    else if (on) { const p = moveList.getPosition(moveList.getCurrentPly()); if (p) analyzePosition(p.fen); }
+    else if (on) {
+      const fen = getCurrentAnalysisFen();
+      if (fen) analyzePosition(fen);
+    }
   },
   onGoStart: () => moveList.goToStart(),
   onGoBack: () => moveList.goBack(),
@@ -615,11 +617,11 @@ function makeClassificationSvg(symbol, color) {
   </svg>`;
 }
 
-let hypoBestAlternative = null;
-
 function showHypoBestMoveArrow() {
-  if (!controls.isEngineOn() || !hypoBestAlternative?.length) { board.clearAutoShapes(); return; }
-  const sq = uciSquares(hypoBestAlternative);
+  if (!controls.isEngineOn() || !moveList.isInHypothetical()) { board.clearAutoShapes(); return; }
+  const bestMove = engineLines.getBestMove();
+  if (!bestMove?.length) { board.clearAutoShapes(); return; }
+  const sq = uciSquares(bestMove);
   board.setAutoShapes([{ orig: sq.from, dest: sq.to, brush: 'lightblue' }]);
 }
 
@@ -654,8 +656,12 @@ async function initEngine() {
       engineLines.updateLine(info);
       const bestEval = engineLines.getBestEval();
       if (bestEval) evalBar.update(bestEval);
+      if (moveList.isInHypothetical()) showHypoBestMoveArrow();
     },
-    onBestMove() { engineLines.setFinalized(); },
+    onBestMove() {
+      engineLines.setFinalized();
+      if (moveList.isInHypothetical()) showHypoBestMoveArrow();
+    },
     onStatus(status) {
       const el = statusBar?.querySelector('.status-text');
       if (!el) return;
@@ -679,6 +685,7 @@ async function analyzePosition(fen) {
   if (terminalEval) {
     if (engine?.isReady()) engine.stop();
     engineLines.clear();
+    if (moveList.isInHypothetical()) showHypoBestMoveArrow();
     evalBar.update(terminalEval.score);
     return;
   }

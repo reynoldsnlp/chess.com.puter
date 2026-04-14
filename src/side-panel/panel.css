@@ -311,7 +311,7 @@ body {
 
 /* --- Eval bar --- */
 #eval-bar {
-  width: 22px;
+  width: 30px;
   flex-shrink: 0;
 }
 
@@ -331,20 +331,31 @@ body {
   height: 50%;
   background: var(--eval-white);
   transition: height 0.3s ease;
+  overflow: visible;
 }
 
 /* eval bar flipping handled via JS transform: rotate(180deg) */
 
 .eval-bar-label {
   position: absolute;
+  top: 3px;
+  left: 0;
   width: 100%;
   text-align: center;
   font-size: 9px;
   font-weight: bold;
-  bottom: 52%;
+  line-height: 1;
+  color: var(--eval-black);
+  text-shadow: none;
+  z-index: 1;
+  pointer-events: none;
+  transition: top 0.3s ease, color 0.2s ease, text-shadow 0.2s ease;
+}
+
+.eval-bar-fill[data-label-placement="outside"] .eval-bar-label {
+  top: calc(-1em - 3px);
   color: var(--eval-white);
   text-shadow: 0 0 3px rgba(0,0,0,0.8);
-  z-index: 1;
 }
 
 /* --- Chessground board --- */
