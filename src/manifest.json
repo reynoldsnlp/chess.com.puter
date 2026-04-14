@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "chess.com.puter",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Free Stockfish analysis in a side panel. Free the fish!",
   "icons": {
     "16": "assets/icons/icon16.png",
