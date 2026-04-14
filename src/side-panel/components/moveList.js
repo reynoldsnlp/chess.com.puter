@@ -6,6 +6,7 @@ import { parseSan, makeSan } from 'chessops/san';
 import { makeFen, parseFen } from 'chessops/fen';
 import { makeUci, parseUci, parseSquare } from 'chessops/util';
 import { Chess } from 'chessops/chess';
+import { formatEvalScore } from '../evalUtils.js';
 
 export function createMoveList(container, onMoveSelect) {
   let positions = [];       // main line: [{ fen, san, uci }] indexed by ply
@@ -335,7 +336,7 @@ export function createMoveList(container, onMoveSelect) {
 }
 
 function classificationTitle(cls) {
-  const evalStr = (cls.evalAfter / 100).toFixed(1);
+  const evalStr = formatEvalScore(cls.evalAfterScore || { type: 'cp', value: cls.evalAfter }, { showPlus: false });
   const epStr = cls.epLoss !== undefined ? cls.epLoss.toFixed(3) : '?';
   const openingStr = cls.opening?.name ? ` | opening: ${cls.opening.name}` : '';
   return `${cls.classification} (EP loss: ${epStr}) | eval: ${evalStr}${openingStr}`;

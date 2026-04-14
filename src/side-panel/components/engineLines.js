@@ -7,6 +7,7 @@ import { parseFen, makeFen } from 'chessops/fen';
 import { makeSan } from 'chessops/san';
 import { parseUci, makeUci } from 'chessops/util';
 import { getPrimaryOpening } from '../../shared/openings.js';
+import { formatEvalScore, whitePerspectiveScoreSign } from '../evalUtils.js';
 
 /**
  * @param {HTMLElement} container
@@ -79,14 +80,8 @@ export function createEngineLines(container) {
       // Eval score
       const evalSpan = document.createElement('span');
       evalSpan.className = 'engine-line-eval';
-      if (line.score.type === 'mate') {
-        evalSpan.textContent = `M${Math.abs(line.score.value)}`;
-        evalSpan.classList.add(line.score.value > 0 ? 'eval-positive' : 'eval-negative');
-      } else {
-        const pawns = line.score.value / 100;
-        evalSpan.textContent = (pawns >= 0 ? '+' : '') + pawns.toFixed(2);
-        evalSpan.classList.add(pawns >= 0 ? 'eval-positive' : 'eval-negative');
-      }
+      evalSpan.textContent = formatEvalScore(line.score, { cpDecimals: 2 });
+      evalSpan.classList.add(whitePerspectiveScoreSign(line.score) >= 0 ? 'eval-positive' : 'eval-negative');
       div.appendChild(evalSpan);
 
       // PV moves in SAN — each move is an interactive span

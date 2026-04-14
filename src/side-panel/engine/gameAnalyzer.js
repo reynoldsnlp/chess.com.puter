@@ -6,6 +6,11 @@
 import { Chess } from 'chessops/chess';
 import { parseFen } from 'chessops/fen';
 import { getPrimaryOpening } from '../../shared/openings.js';
+import {
+  getTerminalPositionEval,
+  normalizeScoreToWhite,
+  scoreToWhiteNormalizedCp,
+} from '../evalUtils.js';
 
 /**
  * Convert centipawns to expected points (win probability, 0.0-1.0).
@@ -124,25 +129,23 @@ export async function analyzeGame(positions, sfController, options = {}) {
 
     onProgress(i, totalPositions);
 
-    const result = await sfController.analyzeAndWait(fen, depth);
+    const terminalEval = getTerminalPositionEval(fen);
+    const result = terminalEval ? null : await sfController.analyzeAndWait(fen, depth);
     if (isCancelled()) return;
 
-    // Normalize eval to white's perspective
-    let whiteNormalizedCp = result.score?.value || 0;
-    if (result.score?.type === 'mate') {
-      whiteNormalizedCp = result.score.value > 0 ? 10000 : -10000;
-    }
-    if (isBlackToMove) {
-      whiteNormalizedCp = -whiteNormalizedCp;
-    }
+    const displayScore = terminalEval?.score
+      || normalizeScoreToWhite(result?.score, isBlackToMove)
+      || { type: 'cp', value: 0 };
+    const whiteNormalizedCp = terminalEval?.whiteNormalizedCp ?? scoreToWhiteNormalizedCp(displayScore);
 
     // Count legal moves for "forced" detection
     const legalMoveCount = countLegalMoves(fen);
 
     evals.push({
       whiteNormalizedCp,
-      bestMove: result.bestMove,
-      pv: result.pv,
+      displayScore,
+      bestMove: result?.bestMove || '',
+      pv: result?.pv || [],
       legalMoveCount,
     });
 
@@ -170,6 +173,8 @@ export async function analyzeGame(positions, sfController, options = {}) {
         opening,
         evalBefore: evalBefore.whiteNormalizedCp,
         evalAfter: evalAfter.whiteNormalizedCp,
+        evalBeforeScore: evalBefore.displayScore,
+        evalAfterScore: evalAfter.displayScore,
         engineBestMove: engineBestUci,
         enginePv: evalBefore.pv,
       };

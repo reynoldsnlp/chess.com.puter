@@ -1,6 +1,8 @@
 // Vertical evaluation bar component.
 // White fill grows from bottom (or top when flipped for black's perspective).
 
+import { formatEvalScore, whitePerspectiveScoreSign } from '../evalUtils.js';
+
 export function createEvalBar(container) {
   container.innerHTML = `
     <div class="eval-bar-track">
@@ -22,13 +24,14 @@ export function createEvalBar(container) {
     let pct, text;
 
     if (score.type === 'mate') {
-      pct = score.value > 0 ? 96 : 4;
-      text = `M${Math.abs(score.value)}`;
+      const sign = whitePerspectiveScoreSign(score);
+      pct = sign > 0 ? 96 : sign < 0 ? 4 : 50;
+      text = formatEvalScore(score);
     } else {
       const pawns = score.value / 100;
       pct = 50 + pawns * 7;
       pct = Math.max(4, Math.min(96, pct));
-      text = (score.value >= 0 ? '+' : '') + (score.value / 100).toFixed(1);
+      text = formatEvalScore(score);
     }
 
     // pct = percentage of bar that is "white" (from white's perspective).

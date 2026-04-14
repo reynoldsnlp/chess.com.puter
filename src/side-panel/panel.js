@@ -18,6 +18,7 @@ import { parseSquare, makeUci as chessopsUci } from 'chessops/util';
 import { analyzeGame, gameAccuracy } from './engine/gameAnalyzer.js';
 import { createEvalChart } from './components/evalChart.js';
 import { getLatestCompletedOpening } from '../shared/openings.js';
+import { getTerminalPositionEval, normalizeScoreToWhite } from './evalUtils.js';
 
 const CLASS_SYMBOL = {
   best: '★', excellent: '➕', good: '✔', book: '📖', forced: '→',
@@ -95,7 +96,7 @@ const moveList = createMoveList(document.getElementById('move-list'), (ply, fen,
     hypoBestAlternative = null;
     showBoardAnnotations(ply, classification);
     evalChart.setCurrentPly(ply);
-    if (classification) evalBar.update({ type: 'cp', value: classification.evalAfter });
+    if (classification) evalBar.update(classification.evalAfterScore || { type: 'cp', value: classification.evalAfter });
     else evalBar.reset();
   } else {
     // Capture the best move from the *previous* position's analysis
@@ -524,7 +525,7 @@ async function runFullGameAnalysis() {
       // If user is viewing this ply, update board annotations and eval bar
       if (moveList.getCurrentPly() === ply && !moveList.isInHypothetical()) {
         showBoardAnnotations(ply, cls);
-        evalBar.update({ type: 'cp', value: cls.evalAfter });
+        evalBar.update(cls.evalAfterScore || { type: 'cp', value: cls.evalAfter });
       }
     },
     onComplete(classifications) {
@@ -646,7 +647,10 @@ async function initEngine() {
   engine = createStockfishController({
     onInfo(info) {
       const blackToMove = currentAnalysisFen?.split(' ')[1] === 'b';
-      if (blackToMove && info.score) info.score = { type: info.score.type, value: -info.score.value };
+      const terminalWinner = info.score?.type === 'mate' && info.score.value === 0 && currentAnalysisFen
+        ? getTerminalPositionEval(currentAnalysisFen)?.score?.winner || null
+        : null;
+      if (info.score) info.score = normalizeScoreToWhite(info.score, blackToMove, terminalWinner);
       engineLines.updateLine(info);
       const bestEval = engineLines.getBestEval();
       if (bestEval) evalBar.update(bestEval);
@@ -671,6 +675,13 @@ async function analyzePosition(fen) {
   if (fullAnalysisRunning) return;
   currentAnalysisFen = fen;
   engineLines.setFen(fen);
+  const terminalEval = getTerminalPositionEval(fen);
+  if (terminalEval) {
+    if (engine?.isReady()) engine.stop();
+    engineLines.clear();
+    evalBar.update(terminalEval.score);
+    return;
+  }
   if (!engine) await initEngine();
   if (engine?.isReady()) engine.analyze(fen, controls.getDepth());
 }
