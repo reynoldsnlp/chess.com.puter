@@ -9,7 +9,7 @@ subscription.
 
 ## Features
 
-- **Full game analysis** with progress bar -- every position evaluated by
+- **Full game analysis** with eval-chart progress -- every position evaluated by
   Stockfish 18 running locally in your browser via WebAssembly
 - **Move classification** using chess.com's Expected Points model: Best, Excellent,
   Good, Inaccuracy, Mistake, Blunder, Book, and Forced
@@ -74,7 +74,7 @@ into the extension and no network calls are made at runtime.
 2. Click the chess.com.puter extension icon to open the side panel
 3. Click "Import game from current page" (the extension scans the page
    automatically and enables the button when a completed game is found)
-4. Full game analysis runs automatically with a progress bar
+4. Full game analysis runs automatically, with progress shown directly on the evaluation chart
 5. Browse moves with arrow keys or click the move list -- each position shows
    the engine's best move, evaluation, and classification
 6. Move pieces on the board to explore hypothetical lines

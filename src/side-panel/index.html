@@ -15,7 +15,13 @@
     <header id="header" class="hidden">
       <div id="history-control" class="history-control hidden">
         <select id="game-history-select" class="game-history-select" aria-label="Analyzed games"></select>
-        <a href="#" id="game-history-original" class="header-link history-original hidden" target="_blank" rel="noopener">Original</a>
+        <a href="#" id="game-history-original" class="header-link history-original hidden" target="_blank" rel="noopener" aria-label="Open original game">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M15 3h6v6"></path>
+            <path d="M10 14 21 3"></path>
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+          </svg>
+        </a>
       </div>
       <a href="#" id="btn-close-game" class="header-link header-close">&times; Close game</a>
     </header>
@@ -45,12 +51,6 @@
 
     <!-- Analysis mode (completed games) -->
     <section id="analysis-section" class="hidden">
-      <div id="progress-container" class="hidden">
-        <div class="progress-track">
-          <div class="progress-fill" id="progress-bar"></div>
-        </div>
-        <span class="progress-text" id="progress-text">Analyzing...</span>
-      </div>
       <div id="analysis-summary" class="hidden"></div>
       <div class="board-row">
         <div id="eval-bar"></div>

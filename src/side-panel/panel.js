@@ -67,9 +67,6 @@ const btnCloseGame = document.getElementById('btn-close-game');
 const analysisSection = document.getElementById('analysis-section');
 const liveSection = document.getElementById('live-section');
 const statusBar = document.getElementById('status-bar');
-const progressContainer = document.getElementById('progress-container');
-const progressBar = document.getElementById('progress-bar');
-const progressText = document.getElementById('progress-text');
 const analysisSummary = document.getElementById('analysis-summary');
 
 // --- Initialize Components ---
@@ -349,8 +346,7 @@ function closeGame() {
   board.setPosition('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
   moveList.loadPgn(null);
   evalChart.setData([], []);
-  if (analysisSummary) { analysisSummary.innerHTML = ''; analysisSummary.classList.add('hidden'); }
-  if (progressContainer) progressContainer.classList.add('hidden');
+  clearAnalysisSummary();
 
   setMode('lobby');
   // Re-scan to see if there's still a game on the page
@@ -684,8 +680,7 @@ async function loadGameView(pgn, detectedColor, options = {}) {
   fullAnalysisRunning = runFullAnalysis;
   setMode('analysis');
 
-  if (analysisSummary) analysisSummary.classList.add('hidden');
-  if (progressContainer) progressContainer.classList.add('hidden');
+  clearAnalysisSummary();
   scheduleBoardRedraw();
   board.clearDrawShapes();
   moveList.loadPgn(pgn);
@@ -736,8 +731,7 @@ async function startSandbox(initialColor = 'white') {
   evalChart.setFlipped(playerColor === 'black');
   evalChart.setPlayerColor(playerColor);
   evalChart.setData([], []);
-  if (analysisSummary) { analysisSummary.innerHTML = ''; analysisSummary.classList.add('hidden'); }
-  if (progressContainer) progressContainer.classList.add('hidden');
+  clearAnalysisSummary();
   scheduleBoardRedraw();
 
   const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -749,6 +743,20 @@ async function startSandbox(initialColor = 'white') {
 async function runFullGameAnalysis() {
   const runId = ++analysisRunId;
   const runHistoryId = selectedHistoryId;
+
+  const positions = moveList.getAllPositions();
+  if (positions.length < 2) {
+    fullAnalysisRunning = false;
+    return;
+  }
+
+  fullAnalysisCancelled = false;
+  fullAnalysisRunning = true;
+
+  const partialClassifications = [null]; // accumulates as analysis progresses
+  showAnalysisSummary(partialClassifications, { pulse: false });
+  evalChart.setData(partialClassifications, positions);
+  scheduleBoardRedraw();
 
   if (!engine) await initEngine();
   if (runId !== analysisRunId) return;
@@ -763,28 +771,8 @@ async function runFullGameAnalysis() {
     }
   }
 
-  const positions = moveList.getAllPositions();
-  if (positions.length < 2) {
-    fullAnalysisRunning = false;
-    return;
-  }
-
-  fullAnalysisCancelled = false;
-  fullAnalysisRunning = true;
-  if (progressContainer) progressContainer.classList.remove('hidden');
-  if (analysisSummary) analysisSummary.classList.add('hidden');
-  scheduleBoardRedraw();
-
-  const partialClassifications = [null]; // accumulates as analysis progresses
-  evalChart.setData(partialClassifications, positions);
-
   const analyzedClassifications = await analyzeGame(positions, engine, {
     depth: 16,
-    onProgress(current, total) {
-      if (runId !== analysisRunId) return;
-      if (progressBar) progressBar.style.width = (total > 0 ? (current / total) * 100 : 0) + '%';
-      if (progressText) progressText.textContent = `Analyzing: ${current}/${total} positions...`;
-    },
     onMoveAnalyzed(ply, cls) {
       if (runId !== analysisRunId) return;
       // Accumulate classifications incrementally
@@ -793,6 +781,7 @@ async function runFullGameAnalysis() {
 
       // Incrementally colorize/classify the move in the move list
       moveList.updateClassification(ply, cls);
+      showAnalysisSummary(partialClassifications, { pulse: true });
 
       // Incrementally build eval chart using the final move spacing.
       evalChart.setData(partialClassifications, positions);
@@ -807,7 +796,6 @@ async function runFullGameAnalysis() {
     onComplete(classifications) {
       if (runId !== analysisRunId) return;
       fullAnalysisRunning = false;
-      if (progressContainer) progressContainer.classList.add('hidden');
       moveList.setClassifications(classifications);
       gameClassifications = classifications;
       if (runHistoryId && selectedHistoryId === runHistoryId) {
@@ -816,7 +804,7 @@ async function runFullGameAnalysis() {
           currentPly: moveList.getCurrentPly(),
         });
       }
-      showAnalysisSummary(classifications);
+      showAnalysisSummary(classifications, { pulse: false });
       scheduleBoardRedraw();
       evalChart.setData(classifications, positions);
       evalChart.setCurrentPly(moveList.getCurrentPly());
@@ -838,8 +826,18 @@ async function runFullGameAnalysis() {
 // ANALYSIS SUMMARY
 // ============================================================
 
-function showAnalysisSummary(classifications) {
+let previousSummaryValues = null;
+
+function clearAnalysisSummary() {
+  previousSummaryValues = null;
   if (!analysisSummary) return;
+  analysisSummary.innerHTML = '';
+  analysisSummary.classList.add('hidden');
+}
+
+function showAnalysisSummary(classifications, options = {}) {
+  if (!analysisSummary) return;
+  const shouldPulse = Boolean(options.pulse && previousSummaryValues);
   const counts = { best: 0, excellent: 0, good: 0, book: 0, forced: 0, inaccuracy: 0, mistake: 0, blunder: 0 };
   for (let ply = 1; ply < classifications.length; ply++) {
     if (!isMyMove(ply)) continue;
@@ -855,13 +853,22 @@ function showAnalysisSummary(classifications) {
     { key: 'blunder', label: CLASS_SYMBOL.blunder },
   ];
   const accuracy = gameAccuracy(classifications, isMyMove);
+  const values = {
+    accuracy: `${accuracy.toFixed(1)}%`,
+    ...Object.fromEntries(items.map(({ key }) => [key, String(counts[key])])),
+  };
+  const pulseClass = (key) => (
+    shouldPulse && previousSummaryValues[key] !== values[key] ? ' summary-item-pulse' : ''
+  );
+
   analysisSummary.innerHTML = `<div class="summary-row">
-    <span class="summary-item summary-accuracy" title="Accuracy (Lichess formula)">${accuracy.toFixed(1)}%</span>
+    <span class="summary-item summary-accuracy${pulseClass('accuracy')}" title="Accuracy (Lichess formula)">${values.accuracy}</span>
     ${items.map(({ key, label }) =>
-      `<span class="summary-item summary-${key}" title="${key}"><span class="summary-icon">${label}</span> ${counts[key]}</span>`
+      `<span class="summary-item summary-${key}${pulseClass(key)}" title="${key}"><span class="summary-icon">${label}</span> ${values[key]}</span>`
     ).join('')}
   </div>`;
   analysisSummary.classList.remove('hidden');
+  previousSummaryValues = values;
 }
 
 // ============================================================
@@ -1121,10 +1128,7 @@ function restoreAnalysisState(state) {
   } else {
     evalChart.setData([], []);
     evalChart.setCurrentPly(state.currentPly || 0);
-    if (analysisSummary) {
-      analysisSummary.innerHTML = '';
-      analysisSummary.classList.add('hidden');
-    }
+    clearAnalysisSummary();
   }
 
   if (state.currentPly > 0) moveList.goToMove(state.currentPly);

@@ -19,6 +19,10 @@ export function createEvalChart(container) {
   canvas.className = 'eval-chart-canvas';
   container.appendChild(canvas);
 
+  const progressMask = document.createElement('div');
+  progressMask.className = 'eval-chart-progress-mask';
+  container.appendChild(progressMask);
+
   const ctx = canvas.getContext('2d');
   let data = [];
   let currentPly = 0;
@@ -53,6 +57,15 @@ export function createEvalChart(container) {
     return Math.max(0, Math.min(pointCount - 1, ply));
   }
 
+  function updateProgressMask(width) {
+    const pointCount = Math.max(totalPointCount, data.length);
+    const progress = pointCount < 2 || data.length < 2 ? 0 : (data.length - 1) / (pointCount - 1);
+    const revealMargin = data.length < 2 ? 0 : 5;
+    const left = Math.min(width, (progress * width) + revealMargin);
+    progressMask.style.left = `${left}px`;
+    progressMask.style.width = `${Math.max(0, width - left)}px`;
+  }
+
   function render() {
     setupCanvas();
     const w = canvas.clientWidth;
@@ -60,6 +73,7 @@ export function createEvalChart(container) {
     if (!w || !h) return;
 
     ctx.clearRect(0, 0, w, h);
+    updateProgressMask(w);
     if (data.length < 2) return;
 
     const pad = { left: 0, right: 0, top: 2, bottom: 2 };
@@ -108,13 +122,7 @@ export function createEvalChart(container) {
     ctx.lineTo(pad.left + plotW, midY);
     ctx.stroke();
 
-    // Eval line
-    ctx.strokeStyle = 'rgba(100, 100, 100, 0.5)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(smoothed[0].x, smoothed[0].y);
-    for (let i = 1; i < smoothed.length; i++) ctx.lineTo(smoothed[i].x, smoothed[i].y);
-    ctx.stroke();
+    drawContrastEvalLine(ctx, smoothed, midY, flipped);
 
     // Classification markers (my negative moves only)
     for (let i = 0; i < data.length; i++) {
@@ -253,4 +261,46 @@ function cardinalSpline(points, tension = 0.4, segments = 8) {
   }
   result.push(points[points.length - 1]);
   return result;
+}
+
+function drawContrastEvalLine(ctx, points, midY, flipped) {
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  for (let i = 1; i < points.length; i++) {
+    const from = points[i - 1];
+    const to = points[i];
+    const fromDelta = from.y - midY;
+    const toDelta = to.y - midY;
+
+    if (fromDelta * toDelta < 0) {
+      const t = (midY - from.y) / (to.y - from.y);
+      const crossing = {
+        x: from.x + ((to.x - from.x) * t),
+        y: midY,
+      };
+      drawEvalSegment(ctx, from, crossing, lineColorForY(from.y, midY, flipped));
+      drawEvalSegment(ctx, crossing, to, lineColorForY(to.y, midY, flipped));
+    } else {
+      const midpointY = (from.y + to.y) / 2;
+      drawEvalSegment(ctx, from, to, lineColorForY(midpointY, midY, flipped));
+    }
+  }
+}
+
+function drawEvalSegment(ctx, from, to, color) {
+  ctx.strokeStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+  ctx.lineTo(to.x, to.y);
+  ctx.stroke();
+}
+
+function lineColorForY(y, midY, flipped) {
+  if (Math.abs(y - midY) < 0.5) return 'rgba(0, 0, 0, 0.9)';
+
+  const aboveMid = y < midY;
+  const whiteFill = flipped ? !aboveMid : aboveMid;
+  return whiteFill ? 'rgba(235, 235, 235, 0.95)' : 'rgba(0, 0, 0, 0.9)';
 }

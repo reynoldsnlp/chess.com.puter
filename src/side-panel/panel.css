@@ -47,7 +47,7 @@ body {
   align-items: center;
   justify-content: flex-start;
   flex-shrink: 0;
-  gap: 8px;
+  gap: 25px;
 }
 
 .history-control {
@@ -55,7 +55,7 @@ body {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0px;
 }
 
 .game-history-select {
@@ -84,10 +84,25 @@ body {
 
 .history-original {
   flex-shrink: 0;
-  padding: 4px 7px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--bg-primary);
+  width: 22px;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.history-original svg {
+  display: block;
+  width: 1em;
+  height: 1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .header-book {
@@ -259,34 +274,6 @@ body {
   width: 100%;
 }
 
-/* --- Progress bar --- */
-#progress-container {
-  padding: 8px 10px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
-}
-
-.progress-track {
-  height: 6px;
-  background: var(--bg-primary);
-  border-radius: 3px;
-  overflow: hidden;
-  margin-bottom: 4px;
-}
-
-.progress-fill {
-  height: 100%;
-  width: 0%;
-  background: var(--accent);
-  border-radius: 3px;
-  transition: width 0.2s;
-}
-
-.progress-text {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
 /* --- Analysis summary --- */
 #analysis-summary {
   padding: 6px 10px;
@@ -309,6 +296,15 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  transform-origin: center;
+}
+
+.summary-item-pulse { animation: summary-bulge 220ms ease-out; }
+
+@keyframes summary-bulge {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.22); }
+  100% { transform: scale(1); }
 }
 
 .summary-icon {
@@ -559,7 +555,7 @@ body {
 }
 
 .controls-settings {
-  gap: 8px;
+  gap: 20px;
   justify-content: flex-start;
 }
 
@@ -628,8 +624,9 @@ body {
 
 .engine-line {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
+  min-height: 24px;
   padding: 2px 0;
   font-size: 11px;
   font-family: 'SF Mono', 'Fira Code', monospace;
@@ -665,10 +662,7 @@ body {
 .engine-line-opening-prefix {
   display: inline-flex;
   align-items: baseline;
-  border-top: 2px solid #a88865;
-  border-bottom: 2px solid #a88865;
-  border-left: 2px solid #a88865;
-  border-right: 2px solid #a88865;
+  border: 2px solid #a88865;
   border-radius: 3px;
   background: rgba(168, 136, 101, 0.08);
   margin-right: 2px;
@@ -718,12 +712,26 @@ body {
   border-top: 1px solid var(--border);
   cursor: pointer;
   position: relative;
+  overflow: hidden;
 }
 
 .eval-chart-canvas {
   display: block;
   width: 100%;
   height: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.eval-chart-progress-mask {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 2;
+  background: var(--bg-primary);
+  pointer-events: none;
 }
 
 /* (old PGN input styles removed - now in lobby section) */
