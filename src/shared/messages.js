@@ -21,10 +21,6 @@ export const MSG = {
   // Payload: { url }
   OPEN_IN_LICHESS: 'OPEN_IN_LICHESS',
 
-  // Content script sends clock times during live games (for live helper)
-  // Payload: { whiteTime, blackTime, playerColor }
-  CLOCK_UPDATE: 'CLOCK_UPDATE',
-
   // Side panel requests content script to scan the page for games
   // Routed through service worker to the active tab's content script
   // If content script is stale (extension reloaded), SW re-injects it

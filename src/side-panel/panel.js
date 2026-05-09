@@ -9,7 +9,6 @@ import { createMoveList } from './components/moveList.js';
 import { createEvalBar } from './components/evalBar.js';
 import { createEngineLines } from './components/engineLines.js';
 import { createControls } from './components/controls.js';
-import { createLiveHelper } from './live-helper/liveHelper.js';
 import { createStockfishController } from './engine/stockfishController.js';
 import { Chess } from 'chessops/chess';
 import { parseFen, makeFen } from 'chessops/fen';
@@ -36,16 +35,17 @@ let fullAnalysisRunning = false;
 let playerColor = 'white';
 let pendingScanData = null; // game data from last scan (not yet imported)
 let savedAnalysisState = null; // analysis state saved when switching to live mode
-let liveHelperPreviousMode = 'lobby';
-let liveHelperForced = false;
-let liveGameTabId = null; // tab that triggered the live-helper mode
+let livePreviousMode = 'lobby';
+let liveGameTabId = null; // tab that triggered live mode
+let gameHistory = [];
+let selectedHistoryId = null;
+let analysisRunId = 0;
 
 // --- DOM: Lobby ---
 const lobby = document.getElementById('lobby');
 const lobbyImportBtn = document.getElementById('lobby-import');
 const lobbyPasteBtn = document.getElementById('lobby-paste');
 const lobbySandboxBtn = document.getElementById('lobby-sandbox');
-const lobbyLiveHelperBtn = document.getElementById('lobby-live-helper');
 const lobbyRefreshBtn = document.getElementById('lobby-refresh');
 const lobbySpinner = document.getElementById('lobby-spinner');
 const lobbyStatus = document.getElementById('lobby-status');
@@ -57,6 +57,9 @@ const pgnWarning = document.getElementById('pgn-warning');
 
 // --- DOM: Header (game loaded) ---
 const header = document.getElementById('header');
+const historyControl = document.getElementById('history-control');
+const historySelect = document.getElementById('game-history-select');
+const historyOriginalLink = document.getElementById('game-history-original');
 const headerBook = document.getElementById('header-book');
 const btnCloseGame = document.getElementById('btn-close-game');
 
@@ -79,6 +82,7 @@ const moveList = createMoveList(document.getElementById('move-list'), (ply, fen,
 
   board.setPosition(fen);
   currentAnalysisFen = fen;
+  if (!inHypo) updateCurrentHistoryEntry({ currentPly: ply });
   updateHeaderBookLabel(completedBookOpening);
 
   if (inHypo && hypoUci) {
@@ -203,7 +207,11 @@ const evalChart = createEvalChart(document.getElementById('eval-chart'));
 evalChart.onClick((ply) => { moveList.closeHypothetical(); moveList.goToMove(ply); });
 evalChart.onHover((ply) => moveList.setHoverPly(ply));
 
-const liveHelper = createLiveHelper(document.getElementById('live-section'));
+historySelect?.addEventListener('change', () => {
+  const entryId = historySelect.value;
+  if (!entryId || entryId === selectedHistoryId) return;
+  loadHistoryEntry(entryId);
+});
 
 // --- Board move handler (for hypothetical lines) ---
 board.onMove((from, to) => {
@@ -254,15 +262,12 @@ board.onMove((from, to) => {
 // ============================================================
 
 function setMode(mode) {
-  const prevMode = currentMode;
-  if (prevMode === 'live_helper' && mode !== 'live_helper') liveHelper.deactivate();
-
   currentMode = mode;
   lobby.classList.toggle('hidden', mode !== 'lobby');
-  header.classList.toggle('hidden', mode === 'lobby');
+  header.classList.toggle('hidden', mode !== 'analysis');
   analysisSection.classList.toggle('hidden', mode !== 'analysis');
   liveSection.classList.toggle('hidden', mode !== 'live_helper');
-  if (btnCloseGame) btnCloseGame.textContent = mode === 'live_helper' ? '\u00d7 Close helper' : '\u00d7 Close game';
+  if (btnCloseGame) btnCloseGame.textContent = '\u00d7 Close game';
   if (headerBook) {
     if (mode !== 'analysis') headerBook.classList.add('hidden');
     else if (headerBook.textContent) headerBook.classList.remove('hidden');
@@ -270,11 +275,10 @@ function setMode(mode) {
   if (statusBar) {
     statusBar.querySelector('.status-text').textContent =
       mode === 'analysis' ? 'Free the fish!' :
-      mode === 'live_helper' ? 'Become one with your inner fish' : 'Free the fish!';
+      mode === 'live_helper' ? 'Game in progress' : 'Free the fish!';
   }
   // Board dimensions change when sections show/hide — recalculate
   if (mode === 'analysis') scheduleBoardRedraw();
-  if (mode === 'live_helper' && prevMode !== 'live_helper') liveHelper.activate();
 }
 
 function scheduleBoardRedraw() {
@@ -294,10 +298,6 @@ lobbySandboxBtn.addEventListener('click', () => {
   startSandbox();
 });
 
-lobbyLiveHelperBtn.addEventListener('click', () => {
-  openManualLiveHelper();
-});
-
 pgnCancelBtn.addEventListener('click', () => {
   pgnInputArea.classList.add('hidden');
   pgnWarning.classList.add('hidden');
@@ -310,14 +310,14 @@ pgnAnalyzeBtn.addEventListener('click', () => {
   if (!isGameComplete(pgn)) { pgnWarning.textContent = 'Game appears in progress. Only completed games can be analyzed.'; pgnWarning.classList.remove('hidden'); return; }
   pgnWarning.classList.add('hidden');
   pgnInputArea.classList.add('hidden');
-  loadGame(pgn, 'white');
+  loadGame(pgn, 'white', { platform: 'pgn', metadata: {} });
 });
 
 // Import from page
 lobbyImportBtn.addEventListener('click', () => {
   if (!pendingScanData?.pgn) return;
   const color = pendingScanData.metadata?.playerColor || 'white';
-  loadGame(pendingScanData.pgn, color);
+  loadGame(pendingScanData.pgn, color, pendingScanData);
 });
 
 // Refresh / scan page
@@ -326,14 +326,14 @@ lobbyRefreshBtn.addEventListener('click', () => scanPage());
 // Close game → return to lobby
 btnCloseGame.addEventListener('click', (e) => {
   e.preventDefault();
-  if (currentMode === 'live_helper') closeLiveHelper();
-  else closeGame();
+  closeGame();
 });
 
 function closeGame() {
-  fullAnalysisCancelled = true;
-  fullAnalysisRunning = false;
-  if (engine) engine.stop();
+  saveSelectedHistoryState();
+  cancelAnalysis();
+  selectedHistoryId = null;
+  renderHistorySelect();
   currentPgn = null;
   gameClassifications = null;
   currentAnalysisFen = null;
@@ -397,7 +397,7 @@ async function scanPage() {
   scanning = false;
   scanResolve = null;
 
-  if (!pendingScanData?.pgn && lobbyStatus.textContent === 'Scanning...') {
+  if (currentMode === 'lobby' && !pendingScanData?.pgn && lobbyStatus.textContent === 'Scanning...') {
     lobbyStatus.textContent = 'No completed game found on this page.';
   }
 }
@@ -406,13 +406,19 @@ function receiveScanResult(payload) {
   if (currentMode !== 'lobby') return;
   const { mode, pgn, metadata } = payload;
   if (mode === 'analysis' && pgn) {
-    pendingScanData = { pgn, metadata };
+    pendingScanData = {
+      pgn,
+      metadata,
+      platform: payload.platform,
+      url: payload.url,
+      tabId: payload.tabId,
+    };
     lobbyImportBtn.disabled = false;
     lobbyStatus.textContent = 'Completed game found! Click Import to analyze.';
   } else if (mode === 'live_helper') {
     pendingScanData = null;
     lobbyImportBtn.disabled = true;
-    lobbyStatus.textContent = 'Game in progress. Open live helper now, or wait for analysis after the game ends.';
+    handleLiveGameDetected(payload);
   } else {
     pendingScanData = null;
     lobbyImportBtn.disabled = true;
@@ -431,18 +437,251 @@ function isMyMove(ply) {
 }
 
 // ============================================================
+// GAME HISTORY
+// ============================================================
+
+function upsertHistoryEntry(pgn, detectedColor, source = {}) {
+  const next = buildHistoryEntry(pgn, detectedColor, source);
+  const existingIndex = gameHistory.findIndex((entry) => entry.id === next.id);
+
+  if (existingIndex >= 0) {
+    const existing = gameHistory[existingIndex];
+    const updated = {
+      ...existing,
+      ...next,
+      gameClassifications: existing.gameClassifications || null,
+      currentPly: existing.currentPly || 0,
+    };
+    gameHistory.splice(existingIndex, 1);
+    gameHistory.unshift(updated);
+    return updated;
+  }
+
+  gameHistory.unshift(next);
+  return next;
+}
+
+function buildHistoryEntry(pgn, detectedColor, source = {}) {
+  const headers = parsePgnHeaders(pgn);
+  const metadata = source.metadata || {};
+  const sourceUrl = source.url || metadata.url || headers.Site || '';
+  const sourcePlatform = normalizePlatform(source.platform);
+  const urlPlatform = platformFromUrl(sourceUrl);
+  const platform = sourcePlatform !== 'pgn' ? sourcePlatform : urlPlatform;
+  const playerSide = normalizeColor(detectedColor || metadata.playerColor || 'white');
+  const opponentSide = playerSide === 'black' ? 'white' : 'black';
+  const whiteName = playerName('white', headers, metadata);
+  const blackName = playerName('black', headers, metadata);
+  const whiteRating = playerRating('white', headers, metadata);
+  const blackRating = playerRating('black', headers, metadata);
+  const result = normalizeResult(headers.Result || trailingResult(pgn));
+  const playerResult = resultForColor(result, playerSide);
+  const originalUrl = originalGameUrl(sourceUrl, platform);
+  const opponentName = opponentSide === 'white' ? whiteName : blackName;
+  const opponentRating = opponentSide === 'white' ? whiteRating : blackRating;
+  const analyzedAt = Date.now();
+
+  return {
+    id: historyKey(pgn, platform, originalUrl),
+    pgn,
+    playerColor: playerSide,
+    platform,
+    url: originalUrl,
+    opponentName,
+    opponentRating,
+    playerResult,
+    result,
+    whiteName,
+    blackName,
+    analyzedAt,
+    currentPly: 0,
+    gameClassifications: null,
+  };
+}
+
+function renderHistorySelect() {
+  if (!historyControl || !historySelect) return;
+  historyControl.classList.toggle('hidden', gameHistory.length === 0);
+  historySelect.innerHTML = '';
+
+  const placeholder = new Option('Analyzed games', '');
+  placeholder.disabled = true;
+  historySelect.appendChild(placeholder);
+
+  for (const entry of gameHistory) {
+    const option = new Option(formatHistoryOption(entry), entry.id);
+    option.title = formatHistoryTitle(entry);
+    historySelect.appendChild(option);
+  }
+
+  historySelect.value = selectedHistoryId || '';
+  if (!historySelect.value) historySelect.selectedIndex = 0;
+
+  const selectedEntry = gameHistory.find((entry) => entry.id === selectedHistoryId);
+  const hasUrl = Boolean(selectedEntry?.url);
+  if (historyOriginalLink) {
+    historyOriginalLink.classList.toggle('hidden', !hasUrl);
+    historyOriginalLink.href = hasUrl ? selectedEntry.url : '#';
+    historyOriginalLink.title = hasUrl ? selectedEntry.url : '';
+  }
+}
+
+function saveSelectedHistoryState() {
+  if (!selectedHistoryId || !currentPgn) return;
+  updateCurrentHistoryEntry({
+    currentPly: moveList.getCurrentPly(),
+    gameClassifications,
+  });
+}
+
+function updateCurrentHistoryEntry(patch) {
+  if (!selectedHistoryId) return;
+  const entry = gameHistory.find((item) => item.id === selectedHistoryId);
+  if (!entry) return;
+  Object.assign(entry, patch);
+}
+
+async function loadHistoryEntry(entryId) {
+  const entry = gameHistory.find((item) => item.id === entryId);
+  if (!entry) return;
+
+  saveSelectedHistoryState();
+  cancelAnalysis();
+  selectedHistoryId = entry.id;
+  renderHistorySelect();
+
+  await loadGameView(entry.pgn, entry.playerColor, {
+    classifications: entry.gameClassifications,
+    currentPly: entry.currentPly || 0,
+    runFullAnalysis: !entry.gameClassifications,
+  });
+}
+
+function formatHistoryOption(entry) {
+  const rating = entry.opponentRating ? ` (${entry.opponentRating})` : '';
+  const result = entry.playerResult || '?';
+  return `${result} vs ${entry.opponentName}${rating} | ${platformLabel(entry.platform)} | ${formatHistoryTime(entry.analyzedAt)}`;
+}
+
+function formatHistoryTitle(entry) {
+  const result = entry.result || 'unknown result';
+  const link = entry.url ? ` | ${entry.url}` : '';
+  return `${entry.whiteName} vs ${entry.blackName} | ${result} | ${platformLabel(entry.platform)}${link}`;
+}
+
+function formatHistoryTime(timestamp) {
+  return new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function parsePgnHeaders(pgn) {
+  const headers = {};
+  const tagPattern = /^\s*\[([A-Za-z0-9_]+)\s+"((?:\\"|[^"])*)"\]\s*$/gm;
+  let match;
+  while ((match = tagPattern.exec(pgn))) {
+    headers[match[1]] = match[2].replace(/\\"/g, '"');
+  }
+  return headers;
+}
+
+function playerName(color, headers, metadata) {
+  const label = color === 'white' ? 'White' : 'Black';
+  const metaName = metadata?.[color]?.name;
+  const headerName = headers[label];
+  if (metaName && metaName !== label) return metaName;
+  return headerName || metaName || label;
+}
+
+function playerRating(color, headers, metadata) {
+  const label = color === 'white' ? 'White' : 'Black';
+  return metadata?.[color]?.rating || headers[`${label}Elo`] || headers[`${label}Rating`] || null;
+}
+
+function trailingResult(pgn) {
+  const match = pgn.trim().match(/(1-0|0-1|1\/2-1\/2)\s*$/);
+  return match?.[1] || null;
+}
+
+function normalizeResult(result) {
+  return ['1-0', '0-1', '1/2-1/2'].includes(result) ? result : null;
+}
+
+function resultForColor(result, color) {
+  if (result === '1/2-1/2') return 'D';
+  if (result === '1-0') return color === 'white' ? 'W' : 'L';
+  if (result === '0-1') return color === 'black' ? 'W' : 'L';
+  return '?';
+}
+
+function normalizeColor(color) {
+  return color === 'black' ? 'black' : 'white';
+}
+
+function normalizePlatform(platform) {
+  if (platform === 'chesscom' || platform === 'chess.com') return 'chesscom';
+  if (platform === 'lichess' || platform === 'lichess.org') return 'lichess';
+  return 'pgn';
+}
+
+function platformFromUrl(url) {
+  if (/^https?:\/\/(?:www\.)?chess\.com\//i.test(url)) return 'chesscom';
+  if (/^https?:\/\/lichess\.org\//i.test(url)) return 'lichess';
+  return 'pgn';
+}
+
+function platformLabel(platform) {
+  if (platform === 'chesscom') return 'chess.com';
+  if (platform === 'lichess') return 'lichess.org';
+  return 'PGN';
+}
+
+function originalGameUrl(url, platform) {
+  if (!url || platform === 'pgn') return '';
+  return /^https?:\/\//i.test(url) ? url : '';
+}
+
+function historyKey(pgn, platform, url) {
+  if (url) return `${platform}:${url}`;
+  return `pgn:${hashString(pgn)}`;
+}
+
+function hashString(value) {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function cancelAnalysis() {
+  fullAnalysisCancelled = true;
+  fullAnalysisRunning = false;
+  analysisRunId += 1;
+  if (engine) engine.stop();
+}
+
+// ============================================================
 // LOAD & ANALYZE GAME
 // ============================================================
 
-async function loadGame(pgn, detectedColor) {
+async function loadGame(pgn, detectedColor, source = {}) {
   if (!pgn) return;
   if (!isGameComplete(pgn)) return;
 
-  fullAnalysisCancelled = true;
-  fullAnalysisRunning = true;
+  const entry = upsertHistoryEntry(pgn, detectedColor, source);
+  await loadHistoryEntry(entry.id);
+}
+
+async function loadGameView(pgn, detectedColor, options = {}) {
+  const classifications = options.classifications || null;
+  const currentPly = options.currentPly || 0;
+  const runFullAnalysis = options.runFullAnalysis !== false && !classifications;
+
   currentPgn = pgn;
-  gameClassifications = null;
-  playerColor = detectedColor || 'white';
+  gameClassifications = classifications;
+  playerColor = normalizeColor(detectedColor);
+  fullAnalysisCancelled = false;
+  fullAnalysisRunning = runFullAnalysis;
   setMode('analysis');
 
   if (analysisSummary) analysisSummary.classList.add('hidden');
@@ -457,12 +696,32 @@ async function loadGame(pgn, detectedColor) {
   evalChart.setFlipped(playerColor === 'black');
   evalChart.setPlayerColor(playerColor);
 
-  await runFullGameAnalysis();
+  if (classifications) {
+    moveList.setClassifications(classifications);
+    const positions = moveList.getAllPositions();
+    evalChart.setData(classifications, positions);
+    evalChart.setCurrentPly(currentPly);
+    showAnalysisSummary(classifications);
+  } else {
+    evalChart.setData([], []);
+  }
+
+  const targetPly = Math.min(currentPly, moveList.getTotalPlies());
+  if (targetPly > 0) moveList.goToMove(targetPly);
+
+  if (runFullAnalysis) {
+    await runFullGameAnalysis();
+  } else {
+    const pos = moveList.getPosition(moveList.getCurrentPly());
+    if (pos) analyzePosition(pos.fen);
+  }
 }
 
 async function startSandbox(initialColor = 'white') {
-  fullAnalysisCancelled = true;
-  fullAnalysisRunning = false;
+  saveSelectedHistoryState();
+  cancelAnalysis();
+  selectedHistoryId = null;
+  renderHistorySelect();
   currentPgn = null;
   gameClassifications = null;
   playerColor = initialColor || 'white';
@@ -488,15 +747,27 @@ async function startSandbox(initialColor = 'white') {
 }
 
 async function runFullGameAnalysis() {
+  const runId = ++analysisRunId;
+  const runHistoryId = selectedHistoryId;
+
   if (!engine) await initEngine();
+  if (runId !== analysisRunId) return;
   if (!engine?.isReady()) {
     await new Promise(r => setTimeout(r, 2000));
+    if (runId !== analysisRunId) return;
     if (!engine) await initEngine();
-    if (!engine?.isReady()) return;
+    if (runId !== analysisRunId) return;
+    if (!engine?.isReady()) {
+      fullAnalysisRunning = false;
+      return;
+    }
   }
 
   const positions = moveList.getAllPositions();
-  if (positions.length < 2) return;
+  if (positions.length < 2) {
+    fullAnalysisRunning = false;
+    return;
+  }
 
   fullAnalysisCancelled = false;
   fullAnalysisRunning = true;
@@ -505,14 +776,17 @@ async function runFullGameAnalysis() {
   scheduleBoardRedraw();
 
   const partialClassifications = [null]; // accumulates as analysis progresses
+  evalChart.setData(partialClassifications, positions);
 
-  gameClassifications = await analyzeGame(positions, engine, {
+  const analyzedClassifications = await analyzeGame(positions, engine, {
     depth: 16,
     onProgress(current, total) {
+      if (runId !== analysisRunId) return;
       if (progressBar) progressBar.style.width = (total > 0 ? (current / total) * 100 : 0) + '%';
       if (progressText) progressText.textContent = `Analyzing: ${current}/${total} positions...`;
     },
     onMoveAnalyzed(ply, cls) {
+      if (runId !== analysisRunId) return;
       // Accumulate classifications incrementally
       while (partialClassifications.length <= ply) partialClassifications.push(null);
       partialClassifications[ply] = cls;
@@ -520,8 +794,8 @@ async function runFullGameAnalysis() {
       // Incrementally colorize/classify the move in the move list
       moveList.updateClassification(ply, cls);
 
-      // Incrementally build eval chart (grows as analysis progresses)
-      evalChart.setData(partialClassifications, positions.slice(0, ply + 1));
+      // Incrementally build eval chart using the final move spacing.
+      evalChart.setData(partialClassifications, positions);
       evalChart.setCurrentPly(moveList.getCurrentPly());
 
       // If user is viewing this ply, update board annotations and eval bar
@@ -531,10 +805,17 @@ async function runFullGameAnalysis() {
       }
     },
     onComplete(classifications) {
+      if (runId !== analysisRunId) return;
       fullAnalysisRunning = false;
       if (progressContainer) progressContainer.classList.add('hidden');
       moveList.setClassifications(classifications);
       gameClassifications = classifications;
+      if (runHistoryId && selectedHistoryId === runHistoryId) {
+        updateCurrentHistoryEntry({
+          gameClassifications: classifications,
+          currentPly: moveList.getCurrentPly(),
+        });
+      }
       showAnalysisSummary(classifications);
       scheduleBoardRedraw();
       evalChart.setData(classifications, positions);
@@ -546,8 +827,11 @@ async function runFullGameAnalysis() {
       const pos = moveList.getPosition(ply);
       if (pos) analyzePosition(pos.fen);
     },
-    isCancelled: () => fullAnalysisCancelled,
+    isCancelled: () => fullAnalysisCancelled || runId !== analysisRunId,
   });
+  if (runId === analysisRunId && analyzedClassifications) {
+    gameClassifications = analyzedClassifications;
+  }
 }
 
 // ============================================================
@@ -705,18 +989,15 @@ chrome.runtime.onMessage.addListener((message) => {
       if (currentMode === 'live_helper') {
         if (!liveGameTabId || payload.tabId === liveGameTabId) {
           liveGameTabId = payload.tabId || liveGameTabId;
-          liveHelper.setMetadata(payload.metadata);
         }
       } else handleLiveGameDetected(payload);
     } else if (currentMode === 'live_helper') {
-      if (liveHelperForced && (!liveGameTabId || payload.tabId === liveGameTabId)) {
+      if (!liveGameTabId || payload.tabId === liveGameTabId) {
         handleLiveGameEnded(payload);
       }
     } else if (currentMode === 'lobby') {
       receiveScanResult(payload);
     }
-  } else if (message.type === MSG.CLOCK_UPDATE && currentMode === 'live_helper') {
-    liveHelper.updateClocks(message.payload);
   }
 });
 
@@ -737,80 +1018,40 @@ chrome.tabs?.onActivated?.addListener?.(() => {
 // LIVE GAME DETECTION (any tab)
 // ============================================================
 
-async function openManualLiveHelper() {
-  if (currentMode === 'live_helper') return;
-
-  liveHelperPreviousMode = currentMode;
-  savedAnalysisState = currentMode === 'analysis' ? captureAnalysisState() : null;
-  liveHelperForced = false;
-  liveGameTabId = null;
-
-  if (currentMode === 'analysis') suspendAnalysisForLiveHelper();
-
-  liveHelper.reset();
-  setMode('live_helper');
-
-  try {
-    const response = await chrome.runtime.sendMessage({ type: MSG.REQUEST_GAME });
-    const payload = response?.payload;
-    if (payload?.mode === 'live_helper') {
-      liveGameTabId = payload.tabId || null;
-      liveHelper.setMetadata(payload.metadata);
-    }
-  } catch (e) {}
-}
-
 function handleLiveGameDetected(payload) {
   if (currentMode === 'live_helper') {
     liveGameTabId = payload.tabId || liveGameTabId;
-    liveHelper.setMetadata(payload.metadata);
     return;
   }
 
-  liveHelperPreviousMode = currentMode;
+  livePreviousMode = currentMode;
   savedAnalysisState = currentMode === 'analysis' ? captureAnalysisState() : null;
-  liveHelperForced = true;
   liveGameTabId = payload.tabId || null;
 
   if (currentMode === 'analysis') suspendAnalysisForLiveHelper();
 
-  liveHelper.reset(payload.metadata);
   setMode('live_helper');
-  liveHelper.setMetadata(payload.metadata);
 }
 
-function handleLiveGameEnded(payload) {
-  if (!liveHelperForced) return;
-  const restoreMode = liveHelperPreviousMode;
+async function handleLiveGameEnded(payload) {
+  const restoreMode = livePreviousMode;
   const restoreState = savedAnalysisState;
 
   liveGameTabId = null;
-  liveHelperForced = false;
-  liveHelperPreviousMode = 'lobby';
+  livePreviousMode = 'lobby';
   savedAnalysisState = null;
+
+  if (payload?.mode === 'analysis' && payload.pgn && isGameComplete(payload.pgn)) {
+    const color = payload.metadata?.playerColor || restoreState?.playerColor || 'white';
+    await loadGame(payload.pgn, color, payload);
+    return;
+  }
 
   if (restoreMode === 'analysis' && restoreState) {
     restoreAnalysisState(restoreState);
   } else {
     setMode('lobby');
     receiveScanResult(payload);
-  }
-}
-
-function closeLiveHelper() {
-  const restoreMode = liveHelperPreviousMode;
-  const restoreState = savedAnalysisState;
-
-  liveGameTabId = null;
-  liveHelperForced = false;
-  liveHelperPreviousMode = 'lobby';
-  savedAnalysisState = null;
-
-  if (restoreMode === 'analysis' && restoreState) {
-    restoreAnalysisState(restoreState);
-  } else {
-    setMode('lobby');
-    scanPage();
   }
 }
 
@@ -825,6 +1066,7 @@ function captureAnalysisState() {
       gameClassifications,
       currentPly: moveList.getCurrentPly(),
       rerunFullAnalysis: fullAnalysisRunning,
+      historyId: selectedHistoryId,
     };
   }
 
@@ -835,9 +1077,8 @@ function captureAnalysisState() {
 }
 
 function suspendAnalysisForLiveHelper() {
-  fullAnalysisCancelled = true;
-  fullAnalysisRunning = false;
-  if (engine) engine.stop();
+  saveSelectedHistoryState();
+  cancelAnalysis();
 }
 
 function restoreAnalysisState(state) {
@@ -857,6 +1098,8 @@ function restoreAnalysisState(state) {
   gameClassifications = null;
   fullAnalysisCancelled = false;
   fullAnalysisRunning = Boolean(state.rerunFullAnalysis);
+  selectedHistoryId = state.historyId || null;
+  renderHistorySelect();
 
   setMode('analysis');
 

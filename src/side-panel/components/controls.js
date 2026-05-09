@@ -27,12 +27,6 @@ export function createControls(container, callbacks) {
   });
 
   container.innerHTML = `
-    <div class="controls-nav">
-      <button class="ctrl-btn" id="btn-start" title="Go to start">&laquo;</button>
-      <button class="ctrl-btn" id="btn-back" title="Previous move">&lsaquo;</button>
-      <button class="ctrl-btn" id="btn-forward" title="Next move">&rsaquo;</button>
-      <button class="ctrl-btn" id="btn-end" title="Go to end">&raquo;</button>
-    </div>
     <div class="controls-settings">
       <div class="control-group">
         <label>Depth</label>
@@ -46,6 +40,12 @@ export function createControls(container, callbacks) {
         <span id="pv-value">${multiPv}</span>
         <button class="ctrl-btn ctrl-sm" id="btn-pv-up">&plus;</button>
       </div>
+    </div>
+    <div class="controls-nav">
+      <button class="ctrl-btn" id="btn-start" title="Go to start">&laquo;</button>
+      <button class="ctrl-btn" id="btn-back" title="Previous move">&lsaquo;</button>
+      <button class="ctrl-btn" id="btn-forward" title="Next move">&rsaquo;</button>
+      <button class="ctrl-btn" id="btn-end" title="Go to end">&raquo;</button>
     </div>
     <div class="controls-actions">
       <button class="ctrl-btn" id="btn-flip" title="Flip board">Flip</button>

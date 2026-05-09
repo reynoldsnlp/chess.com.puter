@@ -124,8 +124,16 @@ export function getLichessMetadata() {
   const metadata = {
     white: { name: 'White', rating: null },
     black: { name: 'Black', rating: null },
+    playerColor: 'white',
     url: window.location.href,
   };
+
+  const board = document.querySelector('.cg-wrap, .main-board, cg-board');
+  if (board?.classList.contains('orientation-black')) {
+    metadata.playerColor = 'black';
+  } else if (board?.classList.contains('orientation-white')) {
+    metadata.playerColor = 'white';
+  }
 
   const players = document.querySelectorAll('.game__meta__players .player');
   for (const player of players) {

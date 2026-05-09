@@ -20,11 +20,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleGameDetected(message.payload, tabId);
       break;
 
-    case MSG.CLOCK_UPDATE:
-      // Forward clock updates to side panel (live helper only)
-      forwardToSidePanel({ type: MSG.CLOCK_UPDATE, payload: message.payload });
-      break;
-
     case MSG.REQUEST_GAME:
       handleRequestGame(sendResponse);
       return true; // Keep sendResponse alive for async response

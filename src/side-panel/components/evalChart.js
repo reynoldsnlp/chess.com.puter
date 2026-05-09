@@ -27,6 +27,7 @@ export function createEvalChart(container) {
   let onHoverPly = null;
   let flipped = false;
   let myColor = 'white';
+  let totalPointCount = 0;
 
   // Cached layout values (set during render)
   let cachedPoints = [];
@@ -46,28 +47,32 @@ export function createEvalChart(container) {
   function xToPly(clientX) {
     const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left;
-    const ply = Math.round((x / rect.width) * (data.length - 1));
-    return Math.max(0, Math.min(data.length - 1, ply));
+    const pointCount = Math.max(totalPointCount, data.length);
+    if (pointCount < 2) return 0;
+    const ply = Math.round((x / rect.width) * (pointCount - 1));
+    return Math.max(0, Math.min(pointCount - 1, ply));
   }
 
   function render() {
     setupCanvas();
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
-    if (!w || !h || data.length < 2) return;
+    if (!w || !h) return;
 
     ctx.clearRect(0, 0, w, h);
+    if (data.length < 2) return;
 
     const pad = { left: 0, right: 0, top: 2, bottom: 2 };
     const plotW = w - pad.left - pad.right;
     const plotH = h - pad.top - pad.bottom;
     const midY = pad.top + plotH / 2;
+    const pointCount = Math.max(totalPointCount, data.length);
 
     cachedPad = pad;
     cachedPlotH = plotH;
 
     const points = data.map((d, i) => {
-      const x = pad.left + (i / (data.length - 1)) * plotW;
+      const x = pad.left + (i / (pointCount - 1)) * plotW;
       let pct = d.whiteWinPct;
       if (flipped) pct = 1 - pct;
       const y = pad.top + (1 - pct) * plotH;
@@ -199,11 +204,15 @@ export function createEvalChart(container) {
   return {
     setData(classifications, positions) {
       data = [];
-      for (let i = 0; i < positions.length; i++) {
+      totalPointCount = positions?.length || classifications?.length || 0;
+      const availablePointCount = Math.min(classifications?.length || 0, totalPointCount);
+
+      for (let i = 0; i < availablePointCount; i++) {
         const cls = classifications?.[i];
         let cp = 0;
         if (i === 0 && classifications?.[1]) cp = classifications[1].evalBefore || 0;
-        else if (cls) cp = cls.evalAfter || 0;
+        else if (i > 0 && cls) cp = cls.evalAfter || 0;
+        else if (i > 0) break;
         data.push({
           whiteWinPct: cpToWinPct(cp),
           classification: cls?.classification || null,

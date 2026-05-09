@@ -1,10 +1,12 @@
 import * as esbuild from 'esbuild';
-import { cpSync, mkdirSync, existsSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const watching = process.argv.includes('--watch');
+const sourceManifestNameSuffix = ' [source only - run npm run build]';
+const sourceManifestVersionSuffix = '-source';
 
 // Ensure dist directories exist
 const dirs = [
@@ -12,19 +14,56 @@ const dirs = [
   'dist/service-worker',
   'dist/content-scripts',
   'dist/stockfish',
+  'dist/icons',
   'dist/assets/icons',
 ];
 for (const dir of dirs) {
   mkdirSync(resolve(__dirname, dir), { recursive: true });
 }
 
+function buildManifest() {
+  const manifestPath = resolve(__dirname, 'src/manifest.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+
+  if (manifest.manifest_version !== 0) {
+    throw new Error('src/manifest.json must stay unloadable. Use manifest_version: 0 and load dist/ instead.');
+  }
+
+  if (!manifest.name.endsWith(sourceManifestNameSuffix)) {
+    throw new Error(`src/manifest.json name must end with "${sourceManifestNameSuffix}".`);
+  }
+
+  if (!manifest.version.endsWith(sourceManifestVersionSuffix)) {
+    throw new Error(`src/manifest.json version must end with "${sourceManifestVersionSuffix}".`);
+  }
+
+  const distManifest = {
+    ...manifest,
+    manifest_version: 3,
+    name: manifest.name.slice(0, -sourceManifestNameSuffix.length),
+    version: manifest.version.slice(0, -sourceManifestVersionSuffix.length),
+  };
+
+  if (!/^\d+(\.\d+){0,3}$/.test(distManifest.version)) {
+    throw new Error(`Built manifest version "${distManifest.version}" is not a valid Chrome extension version.`);
+  }
+
+  writeFileSync(
+    resolve(__dirname, 'dist/manifest.json'),
+    `${JSON.stringify(distManifest, null, 2)}\n`,
+  );
+}
+
 // Copy static files to dist
 function copyStatic() {
-  cpSync('src/manifest.json', 'dist/manifest.json');
+  buildManifest();
   cpSync('src/side-panel/index.html', 'dist/side-panel/index.html');
   cpSync('src/side-panel/panel.css', 'dist/side-panel/panel.css');
   if (existsSync('public/stockfish')) {
     cpSync('public/stockfish', 'dist/stockfish', { recursive: true });
+  }
+  if (existsSync('src/icons')) {
+    cpSync('src/icons', 'dist/icons', { recursive: true });
   }
   if (existsSync('assets/icons')) {
     cpSync('assets/icons', 'dist/assets/icons', { recursive: true });
@@ -55,7 +94,7 @@ const entryPoints = [
   },
   {
     ...commonOptions,
-    entryPoints: ['src/content-scripts/index.js'],
+    entryPoints: ['src/content-scripts/main.js'],
     outfile: 'dist/content-scripts/index.js',
     format: 'iife',
   },

@@ -37,8 +37,8 @@ Paste any completed game in PGN format to analyze it -- no need to be on a chess
 Sandbox
 Open a fresh starting position and freely explore with full engine analysis. No PGN required.
 
-Live Helper
-During active games, the extension shows mirrored clocks with time-difference indicators and low-time alerts. Stockfish analysis is disabled -- but the clocks help you manage your time. When the game ends, analysis becomes available automatically.
+Live Games
+During active games, the extension shows a simple blocked-state notice: Free the fish, not the cheats! Analysis becomes available automatically when the game ends.
 
 Open in Lichess
 One click to continue analysis on lichess.org's full analysis board.

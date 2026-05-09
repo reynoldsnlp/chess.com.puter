@@ -13,7 +13,10 @@
   <div id="app">
     <!-- Header: shown when a game is loaded -->
     <header id="header" class="hidden">
-      <span id="header-book" class="header-book hidden"></span>
+      <div id="history-control" class="history-control hidden">
+        <select id="game-history-select" class="game-history-select" aria-label="Analyzed games"></select>
+        <a href="#" id="game-history-original" class="header-link history-original hidden" target="_blank" rel="noopener">Original</a>
+      </div>
       <a href="#" id="btn-close-game" class="header-link header-close">&times; Close game</a>
     </header>
 
@@ -23,7 +26,6 @@
       <div class="lobby-buttons">
         <button class="lobby-btn" id="lobby-sandbox">Sandbox</button>
         <button class="lobby-btn" id="lobby-paste">Paste PGN</button>
-        <button class="lobby-btn" id="lobby-live-helper">Open live helper</button>
         <div class="lobby-import-row">
           <button class="lobby-btn lobby-import" id="lobby-import" disabled>Import game from current page</button>
           <button class="lobby-refresh" id="lobby-refresh" title="Scan page for games">&#x21bb;</button>
@@ -54,19 +56,26 @@
         <div id="eval-bar"></div>
         <div id="board-container"></div>
       </div>
-      <div id="move-list"></div>
       <div id="control-bar"></div>
+      <span id="header-book" class="header-book hidden"></span>
+      <div id="move-list"></div>
       <div id="engine-lines"></div>
       <div id="eval-chart"></div>
     </section>
 
-    <!-- Live helper mode (active games) -->
-    <section id="live-section" class="hidden"></section>
+    <!-- Live blocked mode (active games) -->
+    <section id="live-section" class="hidden">
+      <div class="live-blocked">
+        <strong>chess.com.puter cannot be used while a live game is active.</strong>
+        <p class="live-blocked-tagline">Free the fish, not the cheats!</p>
+        <p>Analysis will unlock when the game ends.</p>
+      </div>
+    </section>
 
     <footer id="status-bar">
       <span class="status-text">Free the fish!</span>
     </footer>
   </div>
-  <script src="panel.js"></script>
+  <script type="module" src="panel.js"></script>
 </body>
 </html>
