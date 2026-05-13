@@ -939,6 +939,8 @@ async function initEngine() {
   if (engine) return;
   engine = createStockfishController({
     onInfo(info) {
+      if (currentAnalysisFen && getTerminalPositionEval(currentAnalysisFen)) return;
+
       const blackToMove = currentAnalysisFen?.split(' ')[1] === 'b';
       const terminalWinner = info.score?.type === 'mate' && info.score.value === 0 && currentAnalysisFen
         ? getTerminalPositionEval(currentAnalysisFen)?.score?.winner || null
@@ -950,6 +952,8 @@ async function initEngine() {
       if (moveList.isInHypothetical()) showHypoBestMoveArrow();
     },
     onBestMove() {
+      if (currentAnalysisFen && getTerminalPositionEval(currentAnalysisFen)) return;
+
       engineLines.setFinalized();
       if (moveList.isInHypothetical()) showHypoBestMoveArrow();
     },

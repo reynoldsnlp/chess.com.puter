@@ -75,6 +75,11 @@ export function formatEvalScore(score, options = {}) {
   }
 
   if (score.type === 'mate') {
+    const value = Number(score.value) || 0;
+    if (value === 0 && score.winner) {
+      if (score.winner === 'white') return '1-0';
+      if (score.winner === 'black') return '0-1';
+    }
     return `M${Math.abs(score.value)}`;
   }
 

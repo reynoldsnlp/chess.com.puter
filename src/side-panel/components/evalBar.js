@@ -32,7 +32,7 @@ export function createEvalBar(container) {
 
     if (score.type === 'mate') {
       const sign = whitePerspectiveScoreSign(score);
-      pct = sign > 0 ? 96 : sign < 0 ? 4 : 50;
+      pct = sign > 0 ? 100 : sign < 0 ? 0 : 50;
       text = formatEvalScore(score);
     } else {
       const pawns = score.value / 100;
