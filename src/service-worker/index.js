@@ -7,6 +7,7 @@ import { isGameComplete } from '../shared/gameStatus.js';
 
 // Cache the latest game data per tab
 const tabGameData = new Map();
+const LIVE_GAME_CACHE_MAX_AGE_MS = 15000;
 
 // Open side panel when the extension icon is clicked
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
@@ -44,19 +45,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function handleGameDetected(payload, tabId) {
   const { pgn, isGameOver, metadata, platform, url } = payload;
 
-  // Defense in depth: verify game completion on the PGN even if content script says it's over
+  // Defense in depth: never forward PGN unless the PGN itself is terminal.
+  // A DOM-confirmed post-game page may briefly have no complete PGN yet; that
+  // should unlock the live gate without exposing an in-progress movelist.
   const pgnConfirmsOver = pgn ? isGameComplete(pgn) : false;
-  const confirmedOver = isGameOver && (pgnConfirmsOver || !pgn);
+  const confirmedOver = Boolean(isGameOver) || pgnConfirmsOver;
+  const safePgn = confirmedOver && pgnConfirmsOver ? pgn : null;
 
   // Build the forwarded message
   const gameData = {
     mode: confirmedOver ? 'analysis' : 'live_helper',
-    pgn: confirmedOver ? pgn : null, // Strip PGN for live games
+    pgn: safePgn, // Strip PGN unless completion is PGN-confirmed
     isGameOver: confirmedOver,
     metadata: metadata || {},
     platform: platform || 'unknown',
     url: url || '',
     tabId: tabId || null,
+    updatedAt: Date.now(),
   };
 
   // Cache for this tab
@@ -73,9 +78,11 @@ function handleGameDetected(payload, tabId) {
  * Prioritises live games from any tab over the active tab's cached data.
  */
 async function handleRequestGame(sendResponse) {
+  await refreshStaleLiveGames();
+
   // Check all cached tabs for a live game first
   for (const [tid, data] of tabGameData) {
-    if (data.mode === 'live_helper') {
+    if (isFreshLiveGame(data)) {
       sendResponse({ type: MSG.GAME_DATA, payload: { ...data, tabId: tid } });
       return;
     }
@@ -90,6 +97,121 @@ async function handleRequestGame(sendResponse) {
     type: MSG.GAME_DATA,
     payload: cached || { mode: 'idle', pgn: null, isGameOver: false, metadata: {}, platform: 'unknown', url: '' },
   });
+}
+
+function isFreshLiveGame(data) {
+  return data?.mode === 'live_helper'
+    && Date.now() - (data.updatedAt || 0) <= LIVE_GAME_CACHE_MAX_AGE_MS;
+}
+
+async function refreshStaleLiveGames() {
+  for (const [tabId, data] of tabGameData) {
+    if (data?.mode !== 'live_helper' || isFreshLiveGame(data)) continue;
+
+    const state = await getLiveTabState(tabId, data.platform);
+    if (state === 'post_game') {
+      tabGameData.set(tabId, {
+        ...data,
+        mode: 'analysis',
+        pgn: null,
+        isGameOver: true,
+        updatedAt: Date.now(),
+      });
+    } else if (state === 'gone') {
+      tabGameData.delete(tabId);
+    } else {
+      data.updatedAt = Date.now();
+    }
+  }
+}
+
+async function getLiveTabState(tabId, platform) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab?.url) return 'gone';
+
+    if (platform === 'chesscom') {
+      if (!isChessComUrl(tab.url)) return 'gone';
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: hasChessComPostGameDom,
+      });
+      return result?.result ? 'post_game' : 'active';
+    }
+
+    if (platform === 'lichess') {
+      if (!isLichessUrl(tab.url)) return 'gone';
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: hasLichessPostGameDom,
+      });
+      return result?.result ? 'post_game' : 'active';
+    }
+
+    return 'active';
+  } catch (_) {
+    // Keep blocking if the tab exists but cannot be inspected right now.
+    return 'active';
+  }
+}
+
+function isChessComUrl(url) {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname === 'chess.com' || hostname.endsWith('.chess.com');
+  } catch (_) {
+    return false;
+  }
+}
+
+function isLichessUrl(url) {
+  try {
+    return new URL(url).hostname === 'lichess.org';
+  } catch (_) {
+    return false;
+  }
+}
+
+function hasChessComPostGameDom() {
+  const selectors = [
+    '[data-cy="sidebar-game-over-new-game-button"]',
+    '[data-cy="sidebar-game-over-rematch-button"]',
+    '[data-cy="sidebar-game-review-button"]',
+    '[data-cy="quick-analysis-tally-item"]',
+    '.game-review-buttons-component',
+    '.game-review-emphasis-component',
+    '.new-game-buttons-component',
+    '.quick-analysis-tally-component',
+    '.game-over-modal',
+    '.game-over-header-component',
+    '.result-row .game-result',
+    '.move-list-row.result-row',
+  ];
+  if (selectors.some((selector) => document.querySelector(selector))) return true;
+
+  const resultRow = document.querySelector('.game-result, .result-row');
+  const resultText = resultRow?.textContent?.trim() || '';
+  return ['1-0', '0-1', '1/2-1/2'].some((result) => resultText.includes(result));
+}
+
+function hasLichessPostGameDom() {
+  const status = document.querySelector('.status');
+  if (status) {
+    const text = status.textContent?.toLowerCase() || '';
+    if (['checkmate', 'resign', 'draw', 'stalemate', 'timeout', 'aborted'].some((t) => text.includes(t))) {
+      return true;
+    }
+  }
+
+  const buttons = document.querySelectorAll('.game__control button, .follow-up a');
+  for (const btn of buttons) {
+    const text = btn.textContent?.toLowerCase() || '';
+    if (text.includes('analysis') || text.includes('rematch') || text.includes('new opponent')) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**

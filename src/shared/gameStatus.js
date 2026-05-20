@@ -48,6 +48,7 @@ export function isChessComGameOver() {
   const dataCySelectors = [
     '[data-cy="sidebar-game-over-new-game-button"]',
     '[data-cy="sidebar-game-over-rematch-button"]',
+    '[data-cy="sidebar-game-review-button"]',
     '[data-cy="quick-analysis-tally-item"]',
   ];
   for (const selector of dataCySelectors) {
@@ -59,10 +60,13 @@ export function isChessComGameOver() {
   // Strategy 2: class-based selectors for post-game UI components
   const classSelectors = [
     '.game-review-buttons-component',
+    '.game-review-emphasis-component',
     '.new-game-buttons-component',
     '.quick-analysis-tally-component',
     '.game-over-modal',
     '.game-over-header-component',
+    '.result-row .game-result',
+    '.move-list-row.result-row',
   ];
   for (const selector of classSelectors) {
     if (document.querySelector(selector)) {
@@ -74,7 +78,6 @@ export function isChessComGameOver() {
   const ariaSelectors = [
     '[aria-label="Rematch"]',
     '[aria-label="New Game"]',
-    'a[href*="/analysis/game/"]',
   ];
   for (const selector of ariaSelectors) {
     if (document.querySelector(selector)) {
@@ -85,6 +88,14 @@ export function isChessComGameOver() {
   // Strategy 4: URL is a game review/analysis page
   const pathname = window.location.pathname;
   if (/^\/analysis\/game\//.test(pathname)) {
+    return true;
+  }
+
+  // Strategy 5: rendered move-list result row. This covers post-game pages that
+  // stay on /game/live/{id} or /game/{id} after Chess.com's SPA transition.
+  const resultRow = document.querySelector('.game-result, .result-row');
+  const resultText = resultRow?.textContent?.trim() || '';
+  if (TERMINAL_RESULTS.some((result) => resultText.includes(result))) {
     return true;
   }
 

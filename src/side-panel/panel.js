@@ -7,6 +7,7 @@ import { uciSquares } from '../shared/chessUtils.js';
 import { createBoard } from './components/board.js';
 import { createMoveList } from './components/moveList.js';
 import { createEvalBar } from './components/evalBar.js';
+import { createMaterialPanel } from './components/materialPanel.js';
 import { createEngineLines } from './components/engineLines.js';
 import { createControls } from './components/controls.js';
 import { createStockfishController } from './engine/stockfishController.js';
@@ -37,9 +38,11 @@ let pendingScanData = null; // game data from last scan (not yet imported)
 let savedAnalysisState = null; // analysis state saved when switching to live mode
 let livePreviousMode = 'lobby';
 let liveGameTabId = null; // tab that triggered live mode
+let liveRefreshTimer = null;
 let gameHistory = [];
 let selectedHistoryId = null;
 let analysisRunId = 0;
+const LIVE_REFRESH_MS = 5000;
 
 // --- DOM: Lobby ---
 const lobby = document.getElementById('lobby');
@@ -72,12 +75,14 @@ const analysisSummary = document.getElementById('analysis-summary');
 // --- Initialize Components ---
 const board = createBoard(document.getElementById('board-container'));
 const evalBar = createEvalBar(document.getElementById('eval-bar'));
+const materialPanel = createMaterialPanel(document.getElementById('material-panel'));
 
 const moveList = createMoveList(document.getElementById('move-list'), (ply, fen, classification, hypoUci) => {
   const inHypo = ply === -1;
   const completedBookOpening = getLatestCompletedOpening(moveList.getCurrentPathPositions());
 
   board.setPosition(fen);
+  materialPanel.update(fen);
   currentAnalysisFen = fen;
   if (!inHypo) updateCurrentHistoryEntry({ currentPly: ply });
   updateHeaderBookLabel(completedBookOpening);
@@ -114,6 +119,7 @@ let engineLineHoverFen = null; // non-null while hovering an engine-line move
 engineLines.onMoveHover((fen, uciMove) => {
   engineLineHoverFen = fen;
   board.setPosition(fen);
+  materialPanel.update(fen);
   const sq = uciSquares(uciMove);
   board.setHypoLastMove(sq.from, sq.to);
 });
@@ -125,7 +131,10 @@ engineLines.onMoveLeave(() => {
   const pos = moveList.isInHypothetical()
     ? { fen: moveList.getCurrentFen() }
     : moveList.getPosition(moveList.getCurrentPly());
-  if (pos) board.setPosition(pos.fen);
+  if (pos) {
+    board.setPosition(pos.fen);
+    materialPanel.update(pos.fen);
+  }
   // Restore last-move highlight
   if (!moveList.isInHypothetical()) {
     const ply = moveList.getCurrentPly();
@@ -182,6 +191,7 @@ const controls = createControls(document.getElementById('control-bar'), {
     board.flip();
     playerColor = playerColor === 'white' ? 'black' : 'white';
     evalBar.setFlipped(playerColor === 'black');
+    materialPanel.setOrientation(playerColor);
     evalChart.setFlipped(playerColor === 'black');
     evalChart.setPlayerColor(playerColor);
     moveList.setPlayerColor(playerColor);
@@ -264,6 +274,8 @@ function setMode(mode) {
   header.classList.toggle('hidden', mode !== 'analysis');
   analysisSection.classList.toggle('hidden', mode !== 'analysis');
   liveSection.classList.toggle('hidden', mode !== 'live_helper');
+  if (mode === 'live_helper') startLiveRefreshTimer();
+  else stopLiveRefreshTimer();
   if (btnCloseGame) btnCloseGame.textContent = '\u00d7 Close game';
   if (headerBook) {
     if (mode !== 'analysis') headerBook.classList.add('hidden');
@@ -339,6 +351,7 @@ function closeGame() {
   // Clear all analysis components
   engineLines.clear();
   evalBar.reset();
+  materialPanel.reset();
   board.clearAutoShapes();
   board.clearDrawShapes();
   board.setLastMove(null, null);
@@ -683,6 +696,8 @@ async function loadGameView(pgn, detectedColor, options = {}) {
   clearAnalysisSummary();
   scheduleBoardRedraw();
   board.clearDrawShapes();
+  materialPanel.reset();
+  materialPanel.setOrientation(playerColor);
   moveList.loadPgn(pgn);
   moveList.setPlayerColor(playerColor);
   board.setOrientation(playerColor);
@@ -723,6 +738,8 @@ async function startSandbox(initialColor = 'white') {
   setMode('analysis');
 
   board.clearDrawShapes();
+  materialPanel.reset();
+  materialPanel.setOrientation(playerColor);
   moveList.loadStartingPosition();
   moveList.setPlayerColor(playerColor);
   board.setOrientation(playerColor);
@@ -1044,6 +1061,35 @@ function handleLiveGameDetected(payload) {
   setMode('live_helper');
 }
 
+function startLiveRefreshTimer() {
+  if (liveRefreshTimer) return;
+  liveRefreshTimer = setInterval(refreshLiveGameState, LIVE_REFRESH_MS);
+}
+
+function stopLiveRefreshTimer() {
+  if (!liveRefreshTimer) return;
+  clearInterval(liveRefreshTimer);
+  liveRefreshTimer = null;
+}
+
+async function refreshLiveGameState() {
+  if (currentMode !== 'live_helper') return;
+
+  try {
+    const resp = await chrome.runtime.sendMessage({ type: MSG.REQUEST_GAME });
+    const payload = resp?.payload || { mode: 'idle' };
+
+    if (payload.mode === 'live_helper') {
+      liveGameTabId = payload.tabId || liveGameTabId;
+      return;
+    }
+
+    await handleLiveGameEnded(payload);
+  } catch (e) {
+    // Keep the live gate in place if the service worker cannot answer.
+  }
+}
+
 async function handleLiveGameEnded(payload) {
   const restoreMode = livePreviousMode;
   const restoreState = savedAnalysisState;
@@ -1114,6 +1160,8 @@ function restoreAnalysisState(state) {
 
   setMode('analysis');
 
+  materialPanel.reset();
+  materialPanel.setOrientation(state.playerColor);
   moveList.loadPgn(state.pgn);
   moveList.setPlayerColor(state.playerColor);
   board.setOrientation(state.playerColor);
