@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>chess.com (fixture: live game)</title></head>
+<body>
+  <div id="board-layout-player-top">
+    <span data-cy="user-tagline-username" class="cc-user-username-component">Opponent</span>
+  </div>
+  <div id="board-layout-player-bottom">
+    <span data-cy="user-tagline-username" class="cc-user-username-component">Me</span>
+  </div>
+  <div class="clock clock-bottom clock-white"></div>
+  <wc-chess-board></wc-chess-board>
+
+  <!-- In-progress move list: NO terminal result, NO game-over marker.
+       => isGameOver is false, so the content script must not leak a PGN. -->
+  <div data-cy="move-list" class="move-list">
+    <span class="node"><span class="node-highlight-content">e4</span></span>
+    <span class="node"><span class="node-highlight-content">e5</span></span>
+    <span class="node"><span class="node-highlight-content">Nf3</span></span>
+    <span class="node"><span class="node-highlight-content">Nc6</span></span>
+  </div>
+</body>
+</html>

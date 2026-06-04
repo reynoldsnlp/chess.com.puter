@@ -68,28 +68,37 @@ export function createStockfishController(callbacks) {
 
     /**
      * Analyze a position and wait for the result. Used by full game analysis.
-     * Returns { score, bestMove, pv }.
+     * Returns { score, bestMove, pv, secondScore, secondPv }.
+     * secondScore/secondPv are the 2nd-best line when MultiPV>=2 is set,
+     * otherwise null/[].
      */
     analyzeAndWait(fen, depth) {
-      if (!sf || !ready) return Promise.resolve({ score: null, bestMove: '', pv: [] });
+      if (!sf || !ready) {
+        return Promise.resolve({ score: null, bestMove: '', pv: [], secondScore: null, secondPv: [] });
+      }
 
       return new Promise((resolve) => {
         let bestScore = null;
         let bestPv = [];
+        let secondScore = null;
+        let secondPv = [];
 
         // Set batch handlers to intercept output
         batchInfoHandler = (info) => {
           if (info.multipv === 1) {
             bestScore = info.score;
             bestPv = info.pv || [];
+          } else if (info.multipv === 2) {
+            secondScore = info.score;
+            secondPv = info.pv || [];
           }
         };
 
         batchBestMoveHandler = (bm) => {
           batchInfoHandler = null;
           batchBestMoveHandler = null;
-          console.log('chess.com.puter analyzeAndWait result:', { score: bestScore, bestMove: bm.bestmove, pvFirst: bestPv?.[0] });
-          resolve({ score: bestScore, bestMove: bm.bestmove, pv: bestPv });
+          console.log('chess.com.puter analyzeAndWait result:', { score: bestScore, bestMove: bm.bestmove, pvFirst: bestPv?.[0], secondPvFirst: secondPv?.[0] });
+          resolve({ score: bestScore, bestMove: bm.bestmove, pv: bestPv, secondScore, secondPv });
         };
 
         // Send commands. Don't use stop here - just set position and go.

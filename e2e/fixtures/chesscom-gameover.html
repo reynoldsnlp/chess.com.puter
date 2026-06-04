@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>chess.com (fixture: completed game)</title></head>
+<body>
+  <!-- Player taglines the metadata extractor reads -->
+  <div id="board-layout-player-top">
+    <span data-cy="user-tagline-username" class="cc-user-username-component">Opponent</span>
+    <span data-cy="user-tagline-rating">1500</span>
+  </div>
+  <div id="board-layout-player-bottom">
+    <span data-cy="user-tagline-username" class="cc-user-username-component">Me</span>
+    <span data-cy="user-tagline-rating">1520</span>
+  </div>
+  <div class="clock clock-bottom clock-white"></div>
+  <wc-chess-board></wc-chess-board>
+
+  <!-- Post-game UI markers => isChessComGameOver() is true -->
+  <div class="game-over-modal">
+    <button data-cy="sidebar-game-over-rematch-button">Rematch</button>
+    <button data-cy="sidebar-game-review-button">Game Review</button>
+  </div>
+
+  <!-- Embedded PGN (terminal). The extractor scans <script> text for "pgn":"..." -->
+  <script>
+    self.__chesscom = {"game":{"pgn":"1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0"}};
+  </script>
+</body>
+</html>

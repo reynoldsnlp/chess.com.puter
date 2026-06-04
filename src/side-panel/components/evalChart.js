@@ -5,8 +5,9 @@
 const CLAMP_CP = 1000;
 
 const CLASS_COLORS = {
+  brilliant: '#26c2a3', great: '#5c8bb0',
   best: '#96bc4b', excellent: '#96bc4b', good: '#97af8b', book: '#a88865',
-  forced: '#999', inaccuracy: '#f7c631', mistake: '#e69a28', blunder: '#ca3431',
+  forced: '#999', inaccuracy: '#f7c631', miss: '#fa412d', mistake: '#e69a28', blunder: '#ca3431',
 };
 
 function cpToWinPct(cp) {

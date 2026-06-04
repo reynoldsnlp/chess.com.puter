@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Installs deps and runs the postinstall (copies Stockfish + downloads NNUE).
+      - name: Install dependencies
+        run: npm install
+
+      # Fast, dependency-free unit suite (node:test).
+      - name: Unit tests
+        run: npm test
+
+      # Browser for the e2e suite (with OS deps for Chromium on Linux).
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Builds the extension (test:e2e runs `node build.js` first) and runs e2e.
+      # MV3 extensions require a headed browser; xvfb provides a virtual display.
+      # (xvfb is installed by `playwright install --with-deps`.)
+      - name: e2e tests
+        run: xvfb-run -a npm run test:e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

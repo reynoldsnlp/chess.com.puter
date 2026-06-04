@@ -70,7 +70,7 @@ export function createMoveList(container, onMoveSelect) {
     const moveSpan = container.querySelector(`.move[data-ply="${ply}"]`);
     if (!moveSpan) return;
     const mine = isMyPly(ply);
-    for (const c of ['best', 'excellent', 'good', 'book', 'forced', 'inaccuracy', 'mistake', 'blunder']) {
+    for (const c of ['brilliant', 'great', 'best', 'excellent', 'good', 'book', 'forced', 'inaccuracy', 'miss', 'mistake', 'blunder']) {
       moveSpan.classList.remove(`move-${c}`);
     }
     if (shouldColorizeMove(cls, mine)) moveSpan.classList.add(`move-${cls.classification}`);
@@ -339,5 +339,6 @@ function classificationTitle(cls) {
   const evalStr = formatEvalScore(cls.evalAfterScore || { type: 'cp', value: cls.evalAfter }, { showPlus: false });
   const epStr = cls.epLoss !== undefined ? cls.epLoss.toFixed(3) : '?';
   const openingStr = cls.opening?.name ? ` | opening: ${cls.opening.name}` : '';
-  return `${cls.classification} (EP loss: ${epStr}) | eval: ${evalStr}${openingStr}`;
+  const sacStr = cls.isSacrifice ? ` | sacrifices ${cls.sacAmount} pts` : '';
+  return `${cls.classification} (EP loss: ${epStr}) | eval: ${evalStr}${sacStr}${openingStr}`;
 }

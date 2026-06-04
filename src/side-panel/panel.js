@@ -21,8 +21,9 @@ import { getLatestCompletedOpening } from '../shared/openings.js';
 import { getTerminalPositionEval, normalizeScoreToWhite } from './evalUtils.js';
 
 const CLASS_SYMBOL = {
+  brilliant: '!!', great: '!',
   best: '★', excellent: '➕', good: '✔', book: '📖', forced: '→',
-  inaccuracy: '?!', mistake: '?', blunder: '??',
+  inaccuracy: '?!', miss: '✗', mistake: '?', blunder: '??',
 };
 
 // --- State ---
@@ -855,17 +856,20 @@ function clearAnalysisSummary() {
 function showAnalysisSummary(classifications, options = {}) {
   if (!analysisSummary) return;
   const shouldPulse = Boolean(options.pulse && previousSummaryValues);
-  const counts = { best: 0, excellent: 0, good: 0, book: 0, forced: 0, inaccuracy: 0, mistake: 0, blunder: 0 };
+  const counts = { brilliant: 0, great: 0, best: 0, excellent: 0, good: 0, book: 0, forced: 0, inaccuracy: 0, miss: 0, mistake: 0, blunder: 0 };
   for (let ply = 1; ply < classifications.length; ply++) {
     if (!isMyMove(ply)) continue;
     const cls = classifications[ply];
     if (cls && counts[cls.classification] !== undefined) counts[cls.classification]++;
   }
   const items = [
+    { key: 'brilliant', label: CLASS_SYMBOL.brilliant },
+    { key: 'great', label: CLASS_SYMBOL.great },
     { key: 'best', label: CLASS_SYMBOL.best },
     { key: 'excellent', label: CLASS_SYMBOL.excellent },
     { key: 'good', label: CLASS_SYMBOL.good },
     { key: 'inaccuracy', label: CLASS_SYMBOL.inaccuracy },
+    { key: 'miss', label: CLASS_SYMBOL.miss },
     { key: 'mistake', label: CLASS_SYMBOL.mistake },
     { key: 'blunder', label: CLASS_SYMBOL.blunder },
   ];
@@ -914,7 +918,7 @@ function showBoardAnnotations(ply, classification) {
 }
 
 function classificationColor(cls) {
-  return { best: '#96bc4b', excellent: '#96bc4b', good: '#97af8b', book: '#a88865', forced: '#999', inaccuracy: '#f7c631', mistake: '#e69a28', blunder: '#ca3431' }[cls] || '#999';
+  return { brilliant: '#26c2a3', great: '#5c8bb0', best: '#96bc4b', excellent: '#96bc4b', good: '#97af8b', book: '#a88865', forced: '#999', inaccuracy: '#f7c631', miss: '#fa412d', mistake: '#e69a28', blunder: '#ca3431' }[cls] || '#999';
 }
 
 function makeClassificationSvg(symbol, color) {

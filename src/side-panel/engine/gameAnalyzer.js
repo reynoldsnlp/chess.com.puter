@@ -11,6 +11,7 @@ import {
   normalizeScoreToWhite,
   scoreToWhiteNormalizedCp,
 } from '../evalUtils.js';
+import { detectSacrifice } from './moveHeuristics.js';
 
 /**
  * Convert centipawns to expected points (win probability, 0.0-1.0).
@@ -72,8 +73,19 @@ function expectedPointsForMover(whiteNormalizedCp, isWhiteMove) {
     : cpToExpectedPoints(-whiteNormalizedCp);
 }
 
+// Thresholds for the special (Brilliant/Great/Miss) classifications.
+// All EP values are from the mover's perspective on the 0.0-1.0 scale.
+const SAC_MIN_PAWNS = 2;        // a real sacrifice is at least ~a minor piece
+const BRILLIANT_NOT_WINNING = 0.97; // can't already be completely winning
+const BRILLIANT_NOT_LOSING = 0.5;   // can't be losing after the sacrifice
+const NEAR_BEST_EP_LOSS = 0.02;     // "best or nearly best"
+const GREAT_ONLY_MOVE_GAP = 0.10;   // 2nd-best move must lose >= this much EP
+const MISS_HAD_WIN = 0.75;          // a clear winning chance existed
+const MISS_LOST_WIN = 0.55;         // ...and it's no longer winning after
+
 /**
- * Classify a move using chess.com's Expected Points Lost thresholds.
+ * Classify a move using chess.com's Expected Points model, including the
+ * special Brilliant/Great/Miss classifications.
  *
  * Expected Points Lost thresholds (0.0-1.0 scale):
  *   Best:       0.00        (matches engine's top choice)
@@ -83,17 +95,52 @@ function expectedPointsForMover(whiteNormalizedCp, isWhiteMove) {
  *   Mistake:    0.10-0.20
  *   Blunder:    0.20+
  *
- * @param {number} epLoss - expected points lost (0.0-1.0)
- * @param {boolean} isBestMove - player's move matches engine's top choice
- * @param {boolean} isForced - only one legal move in the position
- * @param {boolean} isBookMove - resulting position is a named opening position
+ * @param {object} ctx
+ * @param {number} ctx.epLoss - expected points lost (0.0-1.0)
+ * @param {number} ctx.epBefore - mover's EP before the move
+ * @param {number} ctx.epAfter - mover's EP after the move
+ * @param {number} ctx.epSecond - mover's EP had they played the 2nd-best move
+ * @param {number} ctx.sacAmount - material sacrificed in pawns (>= 0)
+ * @param {boolean} ctx.isBestMove - player's move matches engine's top choice
+ * @param {boolean} ctx.isForced - only one legal move in the position
+ * @param {boolean} ctx.isBookMove - resulting position is a named opening position
  */
-function classifyMove(epLoss, isBestMove, isForced, isBookMove) {
+export function classifyMove(ctx) {
+  const {
+    epLoss, epBefore, epAfter, epSecond,
+    sacAmount, isBestMove, isForced, isBookMove,
+  } = ctx;
+
   if (isBookMove) return { classification: 'book', glyph: '', epLoss };
   if (isForced) return { classification: 'forced', glyph: '', epLoss };
+
+  const isNearBest = isBestMove || epLoss <= NEAR_BEST_EP_LOSS;
+
+  // Brilliant: a sound material sacrifice that is best/near-best, where you
+  // weren't already winning and aren't losing afterward.
+  if (
+    isNearBest
+    && sacAmount >= SAC_MIN_PAWNS
+    && epBefore <= BRILLIANT_NOT_WINNING
+    && epAfter >= BRILLIANT_NOT_LOSING
+  ) {
+    return { classification: 'brilliant', glyph: '!!', epLoss };
+  }
+
+  // Great: the only good move — a clear gap to the 2nd-best alternative.
+  if (isNearBest && (epBefore - epSecond) >= GREAT_ONLY_MOVE_GAP) {
+    return { classification: 'great', glyph: '!', epLoss };
+  }
+
   if (isBestMove) return { classification: 'best', glyph: '', epLoss };
-  if (epLoss <= 0.02) return { classification: 'excellent', glyph: '', epLoss };
+  if (epLoss <= NEAR_BEST_EP_LOSS) return { classification: 'excellent', glyph: '', epLoss };
   if (epLoss <= 0.05) return { classification: 'good', glyph: '', epLoss };
+
+  // Miss: a mistake-or-worse that specifically threw away a winning position.
+  if (epLoss >= 0.10 && epBefore >= MISS_HAD_WIN && epAfter <= MISS_LOST_WIN) {
+    return { classification: 'miss', glyph: '?', epLoss };
+  }
+
   if (epLoss <= 0.10) return { classification: 'inaccuracy', glyph: '?!', epLoss };
   if (epLoss <= 0.20) return { classification: 'mistake', glyph: '?', epLoss };
   return { classification: 'blunder', glyph: '??', epLoss };
@@ -116,9 +163,10 @@ export async function analyzeGame(positions, sfController, options = {}) {
   const evals = [];
   const classifications = [null]; // index 0 = starting position
 
-  // Ensure clean engine state
+  // Ensure clean engine state. MultiPV=2 so we know the 2nd-best move's eval,
+  // which is needed to detect "Great" (the only good move) classifications.
   await sfController.stopAndWait();
-  sfController.setMultiPV(1);
+  sfController.setMultiPV(2);
   await sfController.stopAndWait();
 
   for (let i = 0; i < totalPositions; i++) {
@@ -138,11 +186,20 @@ export async function analyzeGame(positions, sfController, options = {}) {
       || { type: 'cp', value: 0 };
     const whiteNormalizedCp = terminalEval?.whiteNormalizedCp ?? scoreToWhiteNormalizedCp(displayScore);
 
+    // 2nd-best move's eval (white-normalized), null when unavailable.
+    const secondDisplayScore = result?.secondScore
+      ? normalizeScoreToWhite(result.secondScore, isBlackToMove)
+      : null;
+    const secondWhiteNormalizedCp = secondDisplayScore
+      ? scoreToWhiteNormalizedCp(secondDisplayScore)
+      : null;
+
     // Count legal moves for "forced" detection
     const legalMoveCount = countLegalMoves(fen);
 
     evals.push({
       whiteNormalizedCp,
+      secondWhiteNormalizedCp,
       displayScore,
       bestMove: result?.bestMove || '',
       pv: result?.pv || [],
@@ -160,6 +217,12 @@ export async function analyzeGame(positions, sfController, options = {}) {
       const epAfter = expectedPointsForMover(evalAfter.whiteNormalizedCp, isWhiteMove);
       const epLoss = Math.max(0, epBefore - epAfter);
 
+      // EP the mover would have had playing the engine's 2nd-best move.
+      // Falls back to epBefore (no gap) when a 2nd line wasn't available.
+      const epSecond = evalBefore.secondWhiteNormalizedCp != null
+        ? expectedPointsForMover(evalBefore.secondWhiteNormalizedCp, isWhiteMove)
+        : epBefore;
+
       const engineBestUci = evalBefore.bestMove || '';
       const playerMoveUci = positions[ply].uci || '';
       const isBestMove = engineBestUci && playerMoveUci && engineBestUci === playerMoveUci;
@@ -167,7 +230,14 @@ export async function analyzeGame(positions, sfController, options = {}) {
       const opening = getPrimaryOpening(positions[ply].fen);
       const isBookMove = Boolean(opening);
 
-      const classification = classifyMove(epLoss, isBestMove, isForced, isBookMove);
+      // Material sacrificed by this move (walks the post-move engine PV to
+      // settle recaptures). Used for Brilliant detection.
+      const sacAmount = detectSacrifice(positions[ply - 1].fen, playerMoveUci, evalAfter.pv);
+
+      const classification = classifyMove({
+        epLoss, epBefore, epAfter, epSecond,
+        sacAmount, isBestMove, isForced, isBookMove,
+      });
       const cls = {
         ...classification,
         opening,
@@ -177,6 +247,9 @@ export async function analyzeGame(positions, sfController, options = {}) {
         evalAfterScore: evalAfter.displayScore,
         engineBestMove: engineBestUci,
         enginePv: evalBefore.pv,
+        sacAmount,
+        isSacrifice: sacAmount >= SAC_MIN_PAWNS,
+        secondBestEval: evalBefore.secondWhiteNormalizedCp,
       };
 
       classifications.push(cls);

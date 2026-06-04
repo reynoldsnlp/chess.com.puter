@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>lichess (fixture: completed game)</title></head>
+<body>
+  <div class="main-board">
+    <div class="cg-wrap orientation-white"><cg-board></cg-board></div>
+  </div>
+
+  <div class="game__meta__players">
+    <div class="player"><a class="user-link">WhitePlayer</a><rating>1500</rating></div>
+    <div class="player top"><a class="user-link">BlackPlayer</a><rating>1490</rating></div>
+  </div>
+
+  <!-- Game-over status text -->
+  <div class="status">Checkmate</div>
+
+  <!-- Embedded PGN (terminal). The extractor scans <script> text for "pgn":"..." -->
+  <script>
+    self.__lichess = {"data":{"game":{"pgn":"1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0"}}};
+  </script>
+</body>
+</html>

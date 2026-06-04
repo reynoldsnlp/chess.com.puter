@@ -320,12 +320,15 @@ body {
   color: white;
 }
 
+.summary-brilliant .summary-icon { background: #26c2a3; }
+.summary-great .summary-icon { background: #5c8bb0; }
 .summary-best .summary-icon { background: #96bc4b; }
 .summary-excellent .summary-icon { background: #96bc4b; }
 .summary-good .summary-icon { background: #97af8b; }
 .summary-book .summary-icon { background: #a88865; }
 .summary-forced .summary-icon { background: #999; }
 .summary-inaccuracy .summary-icon { background: #f7c631; color: #1a1a1a; }
+.summary-miss .summary-icon { background: #fa412d; }
 .summary-mistake .summary-icon { background: #e69a28; }
 .summary-blunder .summary-icon { background: #ca3431; }
 
@@ -338,12 +341,15 @@ body {
   border-right: 1px solid var(--border);
 }
 
+.summary-brilliant { color: #26c2a3; }
+.summary-great { color: #5c8bb0; }
 .summary-best { color: #96bc4b; }
 .summary-excellent { color: #96bc4b; }
 .summary-good { color: #97af8b; }
 .summary-book { color: #a88865; }
 .summary-forced { color: #999; }
 .summary-inaccuracy { color: #f7c631; }
+.summary-miss { color: #fa412d; }
 .summary-mistake { color: #e69a28; }
 .summary-blunder { color: #ca3431; }
 
@@ -638,6 +644,12 @@ body {
 }
 
 /* Move classification colors (chess.com expected points model) */
+.move.move-brilliant { color: #26c2a3; font-weight: 700; }
+.move.move-brilliant.active { background: #26c2a3; color: white; }
+
+.move.move-great { color: #5c8bb0; font-weight: 700; }
+.move.move-great.active { background: #5c8bb0; color: white; }
+
 .move.move-best { color: #96bc4b; }
 .move.move-best.active { background: #96bc4b; color: white; }
 
@@ -655,6 +667,9 @@ body {
 
 .move.move-inaccuracy { color: #f7c631; }
 .move.move-inaccuracy.active { background: #f7c631; color: #1a1a1a; }
+
+.move.move-miss { color: #fa412d; }
+.move.move-miss.active { background: #fa412d; color: white; }
 
 .move.move-mistake { color: #e69a28; }
 .move.move-mistake.active { background: #e69a28; color: white; }
