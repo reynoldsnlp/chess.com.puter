@@ -5,6 +5,7 @@
   "type": "module",
   "license": "GPL-3.0-or-later",
   "scripts": {
+    "prebuild": "npm test",
     "build": "node build.js",
     "watch": "node build.js --watch",
     "test": "node --import ./test/support/register.mjs --test test/*.test.js",
