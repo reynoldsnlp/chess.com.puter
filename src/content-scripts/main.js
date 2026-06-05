@@ -8,10 +8,8 @@ import { detectPlatform, PLATFORM } from './platformDetector.js';
 import { observeNavigation } from './observers/navigationObserver.js';
 import { extractChessComPgn, getChessComMetadata } from './extractors/chesscom.js';
 import { extractLichessPgn, isLichessGameOver, getLichessMetadata } from './extractors/lichess.js';
-import { extractGenericPgn } from './extractors/generic.js';
 
 let currentExtractor = null;
-let cleanupNavigation = null;
 let runtimeAvailable = true;
 let lastChessComPayload = null;
 let liveWatchUrl = null;
@@ -77,7 +75,7 @@ function init() {
   handlePage(detection);
 
   // Watch for SPA navigation (chess.com is a React SPA)
-  cleanupNavigation = observeNavigation(() => {
+  observeNavigation(() => {
     if (!runtimeAvailable) return;
     cleanup();
     const newDetection = detectPlatform();

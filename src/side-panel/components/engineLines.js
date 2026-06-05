@@ -20,7 +20,6 @@ export function createEngineLines(container) {
   let moveHoverCallback = null;   // (fen, uciMove) => void
   let moveLeaveCallback = null;   // () => void
   let moveClickCallback = null;   // (moves: {fen, san, uci}[]) => void
-  let clickedLineKey = null;       // track which line+move is "locked"
   let finalized = false;           // true after engine sends bestmove
   let mouseMovedSinceRender = false; // true only after real mouse movement
   let lastMouseX = -1;
@@ -143,7 +142,6 @@ export function createEngineLines(container) {
 
         moveSpan.addEventListener('click', () => {
           if (!finalized) return;
-          clickedLineKey = `${pvIndex}-${i}`;
           mouseMovedSinceRender = false;
           if (moveClickCallback) moveClickCallback(movesUpTo);
         });
@@ -197,7 +195,6 @@ export function createEngineLines(container) {
 
     /** Clear all lines (e.g., when position changes) */
     clear() {
-      clickedLineKey = null;
       finalized = false;
       mouseMovedSinceRender = false;
       lines.clear();

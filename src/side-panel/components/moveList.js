@@ -2,10 +2,9 @@
 // Supports main line display, classification colors, and hypothetical variation lines.
 
 import { parsePgn, startingPosition } from 'chessops/pgn';
-import { parseSan, makeSan } from 'chessops/san';
-import { makeFen, parseFen } from 'chessops/fen';
-import { makeUci, parseUci, parseSquare } from 'chessops/util';
-import { Chess } from 'chessops/chess';
+import { parseSan } from 'chessops/san';
+import { makeFen } from 'chessops/fen';
+import { makeUci } from 'chessops/util';
 import { formatEvalScore } from '../evalUtils.js';
 
 export function createMoveList(container, onMoveSelect) {
@@ -16,7 +15,6 @@ export function createMoveList(container, onMoveSelect) {
 
   // Hypothetical line state
   let hypo = null;  // null or { branchPly, moves: [{fen, san, uci}], currentIndex }
-  let hypoBox = null; // DOM element for hypothetical display
 
   function isMyPly(ply) {
     return myColor === 'white' ? ply % 2 === 1 : ply % 2 === 0;
@@ -84,7 +82,6 @@ export function createMoveList(container, onMoveSelect) {
 
   function render() {
     container.innerHTML = '';
-    hypoBox = null;
 
     for (let ply = 1; ply < positions.length; ply++) {
       const { san } = positions[ply];

@@ -1,0 +1,38 @@
+# All checks run on every commit, and CI runs the SAME set via
+# `pre-commit run --all-files`, so CI output stays synchronized with the
+# developer pre-commit experience.
+#
+# Hooks are `language: system` and call the project's own npm scripts, so
+# versions/config live in package.json + eslint.config.js + .stylelintrc.json
+# (one source of truth). Requires node/npm on PATH (nvm, setup-node, etc.).
+default_install_hook_types: [pre-commit]
+repos:
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint
+        entry: npm run lint
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: stylelint
+        name: stylelint (clean-order)
+        entry: npm run lint:css
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: unit-tests
+        name: unit tests (node:test)
+        entry: npm test
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: e2e-tests
+        name: e2e tests (playwright)
+        entry: npm run test:e2e
+        language: system
+        pass_filenames: false
+        always_run: true

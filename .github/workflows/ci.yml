@@ -18,23 +18,27 @@ jobs:
           node-version: 20
           cache: npm
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       # Installs deps and runs the postinstall (copies Stockfish + downloads NNUE).
       - name: Install dependencies
         run: npm install
-
-      # Fast, dependency-free unit suite (node:test).
-      - name: Unit tests
-        run: npm test
 
       # Browser for the e2e suite (with OS deps for Chromium on Linux).
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      # Builds the extension (test:e2e runs `node build.js` first) and runs e2e.
-      # MV3 extensions require a headed browser; xvfb provides a virtual display.
-      # (xvfb is installed by `playwright install --with-deps`.)
-      - name: e2e tests
-        run: xvfb-run -a npm run test:e2e
+      - name: Install pre-commit
+        run: python -m pip install pre-commit
+
+      # Run the SAME hooks developers run on commit (eslint, stylelint, unit, e2e),
+      # so CI output is synchronized with the local pre-commit experience.
+      # MV3 extensions require a headed browser; xvfb provides a virtual display
+      # (preinstalled on ubuntu runners) wrapping the whole hook set.
+      - name: pre-commit (lint + unit + e2e)
+        run: xvfb-run -a pre-commit run --all-files --show-diff-on-failure
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

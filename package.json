@@ -9,6 +9,10 @@
     "watch": "node build.js --watch",
     "test": "node --import ./test/support/register.mjs --test test/*.test.js",
     "test:e2e": "node build.js && playwright test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lint:css": "stylelint \"src/**/*.css\"",
+    "lint:css:fix": "stylelint \"src/**/*.css\" --fix",
     "postinstall": "node scripts/copy-stockfish.js"
   },
   "dependencies": {
@@ -17,7 +21,13 @@
     "chessops": "^0.15.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.60.0",
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0",
+    "stylelint": "^17.12.0",
+    "stylelint-config-clean-order": "^10.0.0",
+    "stylelint-order": "^8.1.1"
   }
 }

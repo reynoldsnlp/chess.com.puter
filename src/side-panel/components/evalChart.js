@@ -34,11 +34,6 @@ export function createEvalChart(container) {
   let myColor = 'white';
   let totalPointCount = 0;
 
-  // Cached layout values (set during render)
-  let cachedPoints = [];
-  let cachedPad = {};
-  let cachedPlotH = 0;
-
   function setupCanvas() {
     const rect = container.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -83,9 +78,6 @@ export function createEvalChart(container) {
     const midY = pad.top + plotH / 2;
     const pointCount = Math.max(totalPointCount, data.length);
 
-    cachedPad = pad;
-    cachedPlotH = plotH;
-
     const points = data.map((d, i) => {
       const x = pad.left + (i / (pointCount - 1)) * plotW;
       let pct = d.whiteWinPct;
@@ -93,7 +85,6 @@ export function createEvalChart(container) {
       const y = pad.top + (1 - pct) * plotH;
       return { x, y };
     });
-    cachedPoints = points;
 
     const smoothed = cardinalSpline(points, 0.4, 8);
 
