@@ -17,8 +17,6 @@ export default [
       'vendor/**',
       'test-results/**',
       'playwright-report/**',
-      // Stale committed build artifact; the real entry is main.js (see build.js).
-      'src/content-scripts/index.js',
     ],
   },
 
