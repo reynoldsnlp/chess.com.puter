@@ -24,7 +24,9 @@ function shutdownRuntime(error) {
   if (!runtimeAvailable) return;
   runtimeAvailable = false;
   cleanup();
-  console.warn('chess.com.puter: content script runtime invalidated; shutting down stale observers', error);
+  // Expected when the extension reloads/updates while this tab still runs an old
+  // content script. We shut down cleanly, so log at debug level rather than warn.
+  console.debug('chess.com.puter: content script runtime invalidated; shutting down stale observers', error);
 }
 
 async function safeSendMessage(message) {

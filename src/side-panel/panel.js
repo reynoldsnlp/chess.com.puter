@@ -862,17 +862,20 @@ function showAnalysisSummary(classifications, options = {}) {
     const cls = classifications[ply];
     if (cls && counts[cls.classification] !== undefined) counts[cls.classification]++;
   }
-  const items = [
+  const topItems = [
     { key: 'brilliant', label: CLASS_SYMBOL.brilliant },
     { key: 'great', label: CLASS_SYMBOL.great },
     { key: 'best', label: CLASS_SYMBOL.best },
     { key: 'excellent', label: CLASS_SYMBOL.excellent },
     { key: 'good', label: CLASS_SYMBOL.good },
+  ];
+  const bottomItems = [
     { key: 'inaccuracy', label: CLASS_SYMBOL.inaccuracy },
     { key: 'miss', label: CLASS_SYMBOL.miss },
     { key: 'mistake', label: CLASS_SYMBOL.mistake },
     { key: 'blunder', label: CLASS_SYMBOL.blunder },
   ];
+  const items = [...topItems, ...bottomItems];
   const accuracy = gameAccuracy(classifications, isMyMove);
   const values = {
     accuracy: `${accuracy.toFixed(1)}%`,
@@ -882,11 +885,16 @@ function showAnalysisSummary(classifications, options = {}) {
     shouldPulse && previousSummaryValues[key] !== values[key] ? ' summary-item-pulse' : ''
   );
 
-  analysisSummary.innerHTML = `<div class="summary-row">
-    <span class="summary-item summary-accuracy${pulseClass('accuracy')}" title="Accuracy (Lichess formula)">${values.accuracy}</span>
-    ${items.map(({ key, label }) =>
-      `<span class="summary-item summary-${key}${pulseClass(key)}" title="${key}"><span class="summary-icon">${label}</span> ${values[key]}</span>`
-    ).join('')}
+  const renderItem = ({ key, label }) =>
+    `<span class="summary-item summary-${key}${pulseClass(key)}" title="${key}"><span class="summary-icon">${label}</span> ${values[key]}</span>`;
+  analysisSummary.innerHTML = `<div class="summary-grid">
+    <div class="summary-accuracy-col">
+      <span class="summary-item summary-accuracy${pulseClass('accuracy')}" title="Accuracy (Lichess formula)">${values.accuracy}</span>
+    </div>
+    <div class="summary-counts-col">
+      <div class="summary-row">${topItems.map(renderItem).join('')}</div>
+      <div class="summary-row">${bottomItems.map(renderItem).join('')}</div>
+    </div>
   </div>`;
   analysisSummary.classList.remove('hidden');
   previousSummaryValues = values;

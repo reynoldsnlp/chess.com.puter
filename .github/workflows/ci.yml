@@ -12,6 +12,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          # vendor/chess-openings is a git submodule providing the opening TSVs
+          # that src/shared/openings.js imports; without it the build/tests fail.
+          submodules: recursive
 
       - uses: actions/setup-node@v4
         with:

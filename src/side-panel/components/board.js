@@ -65,8 +65,23 @@ export function createBoard(container) {
     return dests;
   }
 
+  // Chessground computes arrow/shape coordinates from the board's bounding box.
+  // When the panel is hidden or not yet laid out the box is 0×0, which makes
+  // those coordinates NaN and spams the console with invalid-SVG errors.
+  // Skip drawing while the board has no size; the shapes are re-applied once it does.
+  const hasSize = () => container.offsetWidth > 0 && container.offsetHeight > 0;
+  let autoShapes = [];
+
+  function applyAutoShapes() {
+    if (hasSize()) cg.setAutoShapes(autoShapes);
+  }
+
   // Recalculate chessground dimensions on resize to fix click positioning
-  const resizeObs = new ResizeObserver(() => cg.redrawAll());
+  const resizeObs = new ResizeObserver(() => {
+    if (!hasSize()) return;
+    cg.redrawAll();
+    applyAutoShapes();
+  });
   resizeObs.observe(container);
 
   return {
@@ -89,7 +104,7 @@ export function createBoard(container) {
         cg.set({ fen: parts[0], turnColor, check: false });
       }
 
-      if (drawShapes.length) cg.setShapes(drawShapes);
+      if (drawShapes.length && hasSize()) cg.setShapes(drawShapes);
     },
 
     /** Enable interactive mode (call once, not per move) */
@@ -124,12 +139,12 @@ export function createBoard(container) {
     },
 
     /** Force chessground to recalculate dimensions (call after layout changes) */
-    redraw() { cg.redrawAll(); },
+    redraw() { if (hasSize()) { cg.redrawAll(); applyAutoShapes(); } },
 
     flip() { cg.toggleOrientation(); },
     setOrientation(color) { cg.set({ orientation: color }); },
-    setAutoShapes(shapes) { cg.setAutoShapes(shapes); },
-    clearAutoShapes() { cg.setAutoShapes([]); },
+    setAutoShapes(shapes) { autoShapes = shapes; applyAutoShapes(); },
+    clearAutoShapes() { autoShapes = []; applyAutoShapes(); },
     clearDrawShapes() {
       drawShapes = [];
       cg.setShapes([]);

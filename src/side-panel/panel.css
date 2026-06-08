@@ -319,6 +319,29 @@ body {
   background: var(--bg-secondary);
 }
 
+.summary-grid {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.summary-accuracy-col {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding-right: 10px;
+  border-right: 1px solid var(--border);
+}
+
+.summary-counts-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
 .summary-row {
   display: flex;
   flex-wrap: wrap;
@@ -375,9 +398,7 @@ body {
 .summary-blunder .summary-icon { background: #ca3431; }
 
 .summary-accuracy {
-  margin-right: 4px;
   padding: 2px 8px;
-  border-right: 1px solid var(--border);
 
   font-size: 14px;
   font-weight: 700;
