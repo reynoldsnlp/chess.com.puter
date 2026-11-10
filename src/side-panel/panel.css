@@ -779,8 +779,13 @@ body {
 .move.move-blunder.active { color: white; background: #ca3431; }
 
 /* --- Controls --- */
+/* Three columns: settings | nav | actions. The side columns are equal (so nav
+   stays centered) and wrap their own contents when the panel is narrow; nav
+   always stays on one line. They only become unequal (nav slightly
+   off-center) once a side column can't shrink any further. */
 #control-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(min-content, 1fr) auto minmax(min-content, 1fr);
   flex-shrink: 0;
   gap: 6px;
   align-items: center;
@@ -799,21 +804,19 @@ body {
   display: flex;
   gap: 4px;
   align-items: center;
-  min-width: 0;
 }
 
 .controls-settings,
 .controls-actions {
-  flex: 1 1 0;
+  flex-wrap: wrap;
 }
 
 .controls-settings {
-  gap: 20px;
+  gap: 4px 12px;
   justify-content: flex-start;
 }
 
 .controls-nav {
-  flex: 0 0 auto;
   justify-content: center;
 }
 
@@ -825,9 +828,17 @@ body {
 
 .control-group {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   align-items: center;
+
   font-size: 11px;
+}
+
+.control-stepper {
+  display: flex;
+  gap: 4px;
+  align-items: center;
 }
 
 .control-group label {

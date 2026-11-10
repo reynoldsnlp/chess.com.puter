@@ -30,15 +30,19 @@ export function createControls(container, callbacks) {
     <div class="controls-settings">
       <div class="control-group">
         <label>Depth</label>
-        <button class="ctrl-btn ctrl-sm" id="btn-depth-down">&minus;</button>
-        <span id="depth-value">${depth}</span>
-        <button class="ctrl-btn ctrl-sm" id="btn-depth-up">&plus;</button>
+        <span class="control-stepper">
+          <button class="ctrl-btn ctrl-sm" id="btn-depth-down">&minus;</button>
+          <span id="depth-value">${depth}</span>
+          <button class="ctrl-btn ctrl-sm" id="btn-depth-up">&plus;</button>
+        </span>
       </div>
       <div class="control-group">
         <label>Lines</label>
-        <button class="ctrl-btn ctrl-sm" id="btn-pv-down">&minus;</button>
-        <span id="pv-value">${multiPv}</span>
-        <button class="ctrl-btn ctrl-sm" id="btn-pv-up">&plus;</button>
+        <span class="control-stepper">
+          <button class="ctrl-btn ctrl-sm" id="btn-pv-down">&minus;</button>
+          <span id="pv-value">${multiPv}</span>
+          <button class="ctrl-btn ctrl-sm" id="btn-pv-up">&plus;</button>
+        </span>
       </div>
     </div>
     <div class="controls-nav">
