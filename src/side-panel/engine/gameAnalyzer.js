@@ -205,10 +205,127 @@ export function classifyMove(ctx) {
 }
 
 /**
+ * Evaluate one position with the engine (MultiPV should already be 2).
+ * Terminal positions (mate/stalemate) are scored without searching.
+ * @returns {Promise<{
+ *   whiteNormalizedCp: number, secondWhiteNormalizedCp: number|null,
+ *   displayScore: object, bestMove: string, pv: string[], legalMoveCount: number
+ * }>}
+ */
+export async function evaluatePosition(fen, sfController, depth = 16) {
+  const isBlackToMove = fen.split(' ')[1] === 'b';
+  const terminalEval = getTerminalPositionEval(fen);
+  const result = terminalEval ? null : await sfController.analyzeAndWait(fen, depth);
+
+  const displayScore = terminalEval?.score
+    || normalizeScoreToWhite(result?.score, isBlackToMove)
+    || { type: 'cp', value: 0 };
+  const whiteNormalizedCp = terminalEval?.whiteNormalizedCp ?? scoreToWhiteNormalizedCp(displayScore);
+
+  // 2nd-best move's eval (white-normalized), null when unavailable.
+  const secondDisplayScore = result?.secondScore
+    ? normalizeScoreToWhite(result.secondScore, isBlackToMove)
+    : null;
+  const secondWhiteNormalizedCp = secondDisplayScore
+    ? scoreToWhiteNormalizedCp(secondDisplayScore)
+    : null;
+
+  return {
+    whiteNormalizedCp,
+    secondWhiteNormalizedCp,
+    displayScore,
+    bestMove: result?.bestMove || '',
+    pv: result?.pv || [],
+    legalMoveCount: countLegalMoves(fen),
+  };
+}
+
+/**
+ * Classify the move that leads to positions[ply], given engine evaluations
+ * of the positions before and after it.
+ *
+ * @param {Array<{fen: string, uci: string|null}>} positions - line from its start
+ * @param {number} ply - index of the position reached by the move (>= 1)
+ * @param {object} evalBefore - evaluatePosition() result for positions[ply - 1]
+ * @param {object} evalAfter - evaluatePosition() result for positions[ply]
+ * @param {object|null} previousCls - classification of the move before (for Miss)
+ */
+export function classifyPly(positions, ply, evalBefore, evalAfter, previousCls = null) {
+  const fenBefore = positions[ply - 1].fen;
+  const isWhiteMove = fenBefore.split(' ')[1] !== 'b';
+
+  const epBefore = expectedPointsForMover(evalBefore.whiteNormalizedCp, isWhiteMove);
+  const epAfter = expectedPointsForMover(evalAfter.whiteNormalizedCp, isWhiteMove);
+  const epLoss = Math.max(0, epBefore - epAfter);
+
+  // EP/cp the mover would have had playing the engine's 2nd-best move
+  // (null when a 2nd line wasn't available).
+  const toMover = (wnc) => (isWhiteMove ? wnc : -wnc);
+  const secondWnc = evalBefore.secondWhiteNormalizedCp;
+  const epSecond = secondWnc != null ? expectedPointsForMover(secondWnc, isWhiteMove) : null;
+  const moverCpSecond = secondWnc != null ? toMover(secondWnc) : null;
+  const moverCpAfter = toMover(evalAfter.whiteNormalizedCp);
+
+  const engineBestUci = evalBefore.bestMove || '';
+  const playerMoveUci = positions[ply].uci || '';
+  const isBestMove = isSameMove(fenBefore, engineBestUci, playerMoveUci);
+  const isForced = evalBefore.legalMoveCount === 1;
+  const opening = getPrimaryOpening(positions[ply].fen);
+  const isBookMove = Boolean(opening);
+
+  // Static board facts (sacrifice, free capture, check, promotion). Only
+  // the engine's top move can be Brilliant/Great, so skip the work otherwise.
+  const tactics = isBestMove && !isBookMove && !isForced
+    ? analyzeMoveTactics(fenBefore, playerMoveUci)
+    : null;
+
+  // EP the opponent lost on the previous ply (for Miss).
+  const opponentEpLoss = previousCls?.epLoss ?? null;
+
+  // Concrete damage (for Blunder); only needed for big drops.
+  let materialLost = 0;
+  let allowsMate = false;
+  if (epLoss > 0.20) {
+    materialLost = materialLostByMove(
+      fenBefore, playerMoveUci, evalAfter.pv, evalBefore.pv,
+      ply >= 2 ? positions[ply - 2].fen : null,
+    );
+    const afterScore = evalAfter.displayScore;
+    allowsMate = afterScore?.type === 'mate'
+      && whitePerspectiveScoreSign(afterScore) === (isWhiteMove ? -1 : 1);
+  }
+
+  const classification = classifyMove({
+    epLoss, epBefore, epAfter, epSecond,
+    moverCpAfter, moverCpSecond,
+    isBestMove, isForced, isBookMove,
+    tactics: tactics || undefined,
+    opponentEpLoss, materialLost, allowsMate,
+  });
+  return {
+    ...classification,
+    opening,
+    evalBefore: evalBefore.whiteNormalizedCp,
+    evalAfter: evalAfter.whiteNormalizedCp,
+    evalBeforeScore: evalBefore.displayScore,
+    evalAfterScore: evalAfter.displayScore,
+    engineBestMove: engineBestUci,
+    enginePv: evalBefore.pv,
+    materialLost,
+    allowsMate,
+    isSacrifice: Boolean(tactics?.isSacrifice),
+    sacrificedPieces: tactics?.sacrificedPieces || [],
+    secondBestEval: evalBefore.secondWhiteNormalizedCp,
+  };
+}
+
+/**
  * Run full game analysis.
  * @param {Array<{fen: string, san: string|null, uci: string|null}>} positions
  * @param {object} sfController
  * @param {object} options
+ * @param {Map<string, object>} [options.evalCache] - filled with each
+ *   position's evaluation (keyed by FEN) so variations can reuse them
  */
 export async function analyzeGame(positions, sfController, options = {}) {
   const depth = options.depth || 16;
@@ -216,6 +333,7 @@ export async function analyzeGame(positions, sfController, options = {}) {
   const onComplete = options.onComplete || (() => {});
   const onMoveAnalyzed = options.onMoveAnalyzed || (() => {});
   const isCancelled = options.isCancelled || (() => false);
+  const evalCache = options.evalCache || null;
 
   const totalPositions = positions.length;
   const evals = [];
@@ -229,114 +347,18 @@ export async function analyzeGame(positions, sfController, options = {}) {
 
   for (let i = 0; i < totalPositions; i++) {
     if (isCancelled()) return;
-
-    const { fen } = positions[i];
-    const isBlackToMove = fen.split(' ')[1] === 'b';
-
     onProgress(i, totalPositions);
 
-    const terminalEval = getTerminalPositionEval(fen);
-    const result = terminalEval ? null : await sfController.analyzeAndWait(fen, depth);
+    const evaluation = await evaluatePosition(positions[i].fen, sfController, depth);
     if (isCancelled()) return;
-
-    const displayScore = terminalEval?.score
-      || normalizeScoreToWhite(result?.score, isBlackToMove)
-      || { type: 'cp', value: 0 };
-    const whiteNormalizedCp = terminalEval?.whiteNormalizedCp ?? scoreToWhiteNormalizedCp(displayScore);
-
-    // 2nd-best move's eval (white-normalized), null when unavailable.
-    const secondDisplayScore = result?.secondScore
-      ? normalizeScoreToWhite(result.secondScore, isBlackToMove)
-      : null;
-    const secondWhiteNormalizedCp = secondDisplayScore
-      ? scoreToWhiteNormalizedCp(secondDisplayScore)
-      : null;
-
-    // Count legal moves for "forced" detection
-    const legalMoveCount = countLegalMoves(fen);
-
-    evals.push({
-      whiteNormalizedCp,
-      secondWhiteNormalizedCp,
-      displayScore,
-      bestMove: result?.bestMove || '',
-      pv: result?.pv || [],
-      legalMoveCount,
-    });
+    evals.push(evaluation);
+    evalCache?.set(positions[i].fen, evaluation);
 
     // Classify the move immediately once we have before and after evals
     if (i >= 1) {
-      const ply = i;
-      const evalBefore = evals[ply - 1];
-      const evalAfter = evals[ply];
-      const isWhiteMove = ply % 2 === 1;
-
-      const epBefore = expectedPointsForMover(evalBefore.whiteNormalizedCp, isWhiteMove);
-      const epAfter = expectedPointsForMover(evalAfter.whiteNormalizedCp, isWhiteMove);
-      const epLoss = Math.max(0, epBefore - epAfter);
-
-      // EP/cp the mover would have had playing the engine's 2nd-best move
-      // (null when a 2nd line wasn't available).
-      const toMover = (wnc) => (isWhiteMove ? wnc : -wnc);
-      const secondWnc = evalBefore.secondWhiteNormalizedCp;
-      const epSecond = secondWnc != null ? expectedPointsForMover(secondWnc, isWhiteMove) : null;
-      const moverCpSecond = secondWnc != null ? toMover(secondWnc) : null;
-      const moverCpAfter = toMover(evalAfter.whiteNormalizedCp);
-
-      const engineBestUci = evalBefore.bestMove || '';
-      const playerMoveUci = positions[ply].uci || '';
-      const isBestMove = isSameMove(positions[ply - 1].fen, engineBestUci, playerMoveUci);
-      const isForced = evalBefore.legalMoveCount === 1;
-      const opening = getPrimaryOpening(positions[ply].fen);
-      const isBookMove = Boolean(opening);
-
-      // Static board facts (sacrifice, free capture, check, promotion). Only
-      // the engine's top move can be Brilliant/Great, so skip the work otherwise.
-      const tactics = isBestMove && !isBookMove && !isForced
-        ? analyzeMoveTactics(positions[ply - 1].fen, playerMoveUci)
-        : null;
-
-      // EP the opponent lost on the previous ply (for Miss).
-      const opponentEpLoss = classifications[ply - 1]?.epLoss ?? null;
-
-      // Concrete damage (for Blunder); only needed for big drops.
-      let materialLost = 0;
-      let allowsMate = false;
-      if (epLoss > 0.20) {
-        materialLost = materialLostByMove(
-          positions[ply - 1].fen, playerMoveUci, evalAfter.pv, evalBefore.pv,
-          ply >= 2 ? positions[ply - 2].fen : null,
-        );
-        const afterScore = evalAfter.displayScore;
-        allowsMate = afterScore?.type === 'mate'
-          && whitePerspectiveScoreSign(afterScore) === (isWhiteMove ? -1 : 1);
-      }
-
-      const classification = classifyMove({
-        epLoss, epBefore, epAfter, epSecond,
-        moverCpAfter, moverCpSecond,
-        isBestMove, isForced, isBookMove,
-        tactics: tactics || undefined,
-        opponentEpLoss, materialLost, allowsMate,
-      });
-      const cls = {
-        ...classification,
-        opening,
-        evalBefore: evalBefore.whiteNormalizedCp,
-        evalAfter: evalAfter.whiteNormalizedCp,
-        evalBeforeScore: evalBefore.displayScore,
-        evalAfterScore: evalAfter.displayScore,
-        engineBestMove: engineBestUci,
-        enginePv: evalBefore.pv,
-        materialLost,
-        allowsMate,
-        isSacrifice: Boolean(tactics?.isSacrifice),
-        sacrificedPieces: tactics?.sacrificedPieces || [],
-        secondBestEval: evalBefore.secondWhiteNormalizedCp,
-      };
-
+      const cls = classifyPly(positions, i, evals[i - 1], evals[i], classifications[i - 1]);
       classifications.push(cls);
-      onMoveAnalyzed(ply, cls);
+      onMoveAnalyzed(i, cls);
     }
   }
 

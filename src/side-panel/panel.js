@@ -16,6 +16,7 @@ import { parseFen, makeFen } from 'chessops/fen';
 import { makeSan } from 'chessops/san';
 import { parseSquare, makeUci as chessopsUci } from 'chessops/util';
 import { analyzeGame, gameAccuracy } from './engine/gameAnalyzer.js';
+import { createVariationClassifier } from './engine/variationClassifier.js';
 import { createEvalChart } from './components/evalChart.js';
 import { getLatestCompletedOpening } from '../shared/openings.js';
 import { getTerminalPositionEval, normalizeScoreToWhite } from './evalUtils.js';
@@ -43,6 +44,8 @@ let liveRefreshTimer = null;
 let gameHistory = [];
 let selectedHistoryId = null;
 let analysisRunId = 0;
+let variationJobId = 0;          // bumps to supersede an in-flight variation classification
+let classifyingVariation = false; // engine is busy classifying; live analysis waits
 const LIVE_REFRESH_MS = 5000;
 
 // --- DOM: Lobby ---
@@ -108,8 +111,13 @@ const moveList = createMoveList(document.getElementById('move-list'), (ply, fen,
 
   engineLines.clear();
   engineLines.setFen(fen);
-  if (inHypo) showHypoBestMoveArrow();
-  analyzePosition(fen);
+  if (inHypo) {
+    showHypoBestMoveArrow();
+    classifyVariationThenAnalyze();
+  } else {
+    cancelVariationClassification();
+    analyzePosition(fen);
+  }
 });
 
 const engineLines = createEngineLines(document.getElementById('engine-lines'));
@@ -181,7 +189,8 @@ const controls = createControls(document.getElementById('control-bar'), {
   },
   onMultiPvChange: (n) => {
     engineLines.setMaxLines(n);
-    if (engine?.isReady()) engine.setMultiPV(n);
+    // While classifying, the classifier needs MultiPV 2; release() applies n.
+    if (engine?.isReady() && !classifyingVariation) engine.setMultiPV(n);
     const fen = getCurrentAnalysisFen();
     if (!fen) return;
     engineLines.clear();
@@ -199,8 +208,11 @@ const controls = createControls(document.getElementById('control-bar'), {
     if (gameClassifications) showAnalysisSummary(gameClassifications);
   },
   onEngineToggle: (on) => {
-    if (!on && engine) { engine.stop(); engineLines.clear(); evalBar.reset(); board.clearAutoShapes(); }
-    else if (on) {
+    if (!on && engine) {
+      cancelVariationClassification();
+      engine.stop(); engineLines.clear(); evalBar.reset(); board.clearAutoShapes();
+    } else if (on) {
+      if (moveList.isInHypothetical()) { classifyVariationThenAnalyze(); return; }
       const fen = getCurrentAnalysisFen();
       if (fen) analyzePosition(fen);
     }
@@ -209,6 +221,14 @@ const controls = createControls(document.getElementById('control-bar'), {
   onGoBack: () => moveList.goBack(),
   onGoForward: () => moveList.goForward(),
   onGoEnd: () => moveList.goToEnd(),
+});
+
+// Same depth as full-game analysis so variation moves get comparable labels.
+const CLASSIFICATION_DEPTH = 16;
+const variationClassifier = createVariationClassifier({
+  getEngine: () => engine,
+  getMultiPv: () => controls.getMultiPv(),
+  depth: CLASSIFICATION_DEPTH,
 });
 
 const evalChart = createEvalChart(document.getElementById('eval-chart'));
@@ -664,6 +684,7 @@ function hashString(value) {
 }
 
 function cancelAnalysis() {
+  cancelVariationClassification();
   fullAnalysisCancelled = true;
   fullAnalysisRunning = false;
   analysisRunId += 1;
@@ -759,6 +780,7 @@ async function startSandbox(initialColor = 'white') {
 }
 
 async function runFullGameAnalysis() {
+  cancelVariationClassification();
   const runId = ++analysisRunId;
   const runHistoryId = selectedHistoryId;
 
@@ -790,7 +812,8 @@ async function runFullGameAnalysis() {
   }
 
   const analyzedClassifications = await analyzeGame(positions, engine, {
-    depth: 16,
+    depth: CLASSIFICATION_DEPTH,
+    evalCache: variationClassifier.evalCache,
     onMoveAnalyzed(ply, cls) {
       if (runId !== analysisRunId) return;
       // Accumulate classifications incrementally
@@ -939,10 +962,81 @@ function makeClassificationSvg(symbol, color) {
 
 function showHypoBestMoveArrow() {
   if (!controls.isEngineOn() || !moveList.isInHypothetical()) { board.clearAutoShapes(); return; }
+  const shapes = [];
   const bestMove = engineLines.getBestMove();
-  if (!bestMove?.length) { board.clearAutoShapes(); return; }
-  const sq = uciSquares(bestMove);
-  board.setAutoShapes([{ orig: sq.from, dest: sq.to, brush: 'lightblue' }]);
+  if (bestMove?.length) {
+    const sq = uciSquares(bestMove);
+    shapes.push({ orig: sq.from, dest: sq.to, brush: 'lightblue' });
+  }
+  // Classification badge on the variation move just played.
+  const move = moveList.getCurrentHypoMove();
+  const symbol = move?.cls && CLASS_SYMBOL[move.cls.classification];
+  if (symbol && move.uci) {
+    const sq = uciSquares(move.uci);
+    const color = classificationColor(move.cls.classification);
+    shapes.push({ orig: sq.to, customSvg: { html: makeClassificationSvg(symbol, color) } });
+  }
+  board.setAutoShapes(shapes);
+}
+
+// ============================================================
+// VARIATION / SANDBOX CLASSIFICATION
+// ============================================================
+
+/**
+ * Classify any unclassified moves of the current variation up to the move
+ * being viewed (in order, so each can see the one before it for Miss), then
+ * resume live analysis of whatever position is current by then.
+ */
+async function classifyVariationThenAnalyze() {
+  const jobId = ++variationJobId;
+  const resume = () => {
+    if (jobId !== variationJobId) return; // superseded; the newer job resumes
+    classifyingVariation = false;
+    variationClassifier.release();
+    const fen = getCurrentAnalysisFen();
+    if (fen) analyzePosition(fen);
+  };
+
+  if (!controls.isEngineOn() || fullAnalysisRunning || currentMode !== 'analysis') { resume(); return; }
+
+  const lastIndex = moveList.getHypoCurrentIndex();
+  const pendingIndexes = [];
+  for (let i = 0; i <= lastIndex; i++) {
+    if (!moveList.getHypoContext(i)?.move.cls) pendingIndexes.push(i);
+  }
+  if (!pendingIndexes.length) { resume(); return; }
+
+  if (!engine) await initEngine();
+  if (jobId !== variationJobId) return;
+  if (!engine?.isReady()) { resume(); return; }
+
+  classifyingVariation = true;
+  setStatusText('Classifying move\u2026');
+  for (const index of pendingIndexes) {
+    // Re-read context each time: earlier results feed the next move's Miss
+    // check, and the variation may have changed while we waited.
+    const ctx = moveList.getHypoContext(index);
+    if (!ctx || ctx.move.cls) continue;
+    const cls = await variationClassifier.classify(ctx.positions, ctx.ply, ctx.previousCls);
+    if (jobId !== variationJobId || !cls) break;
+    moveList.setHypoClassification(ctx.move, cls);
+    if (moveList.getCurrentHypoMove() === ctx.move) showHypoBestMoveArrow();
+  }
+  resume();
+}
+
+function cancelVariationClassification() {
+  variationJobId++;
+  if (classifyingVariation) {
+    classifyingVariation = false;
+    variationClassifier.cancel();
+  }
+}
+
+function setStatusText(text) {
+  const el = statusBar?.querySelector('.status-text');
+  if (el) el.textContent = text;
 }
 
 function updateHeaderBookLabel(opening) {
@@ -1003,6 +1097,9 @@ async function initEngine() {
 async function analyzePosition(fen) {
   if (!controls.isEngineOn() || currentMode !== 'analysis') return;
   if (fullAnalysisRunning) return;
+  // The variation classifier owns the engine; it resumes live analysis of the
+  // current position when it finishes.
+  if (classifyingVariation) return;
   currentAnalysisFen = fen;
   engineLines.setFen(fen);
   const terminalEval = getTerminalPositionEval(fen);

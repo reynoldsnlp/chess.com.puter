@@ -14,6 +14,7 @@ subscription.
 - **Move classification** using chess.com's Expected Points model: Best, Excellent,
   Good, Inaccuracy, Mistake, Miss, Blunder, Book, and Forced, plus Brilliant and
   Great using rules modeled on [WintrChess](https://github.com/WintrCat/wintrchess).
+  Moves you try in Sandbox or in variations off a game are classified too.
   See [MOVE_CLASSIFICATION.md](MOVE_CLASSIFICATION.md) for how the classes are
   determined and a survey of how Lichess, chess.com, and other tools do it.
 - **Accuracy percentage** calculated using the Lichess formula (harmonic mean of

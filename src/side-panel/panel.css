@@ -778,6 +778,20 @@ body {
 .move.move-blunder { color: #ca3431; }
 .move.move-blunder.active { color: white; background: #ca3431; }
 
+/* Classified variation moves: classification color instead of the default
+   variation blue (the active move keeps the blue highlight). */
+.hypo-move.move-brilliant:not(.active) { color: #26c2a3 !important; }
+.hypo-move.move-great:not(.active) { color: #5c8bb0 !important; }
+.hypo-move.move-best:not(.active) { color: #96bc4b !important; }
+.hypo-move.move-excellent:not(.active) { color: #96bc4b !important; }
+.hypo-move.move-good:not(.active) { color: #97af8b !important; }
+.hypo-move.move-book:not(.active) { color: #a88865 !important; }
+.hypo-move.move-forced:not(.active) { color: #999 !important; }
+.hypo-move.move-inaccuracy:not(.active) { color: #f7c631 !important; }
+.hypo-move.move-miss:not(.active) { color: #fa412d !important; }
+.hypo-move.move-mistake:not(.active) { color: #e69a28 !important; }
+.hypo-move.move-blunder:not(.active) { color: #ca3431 !important; }
+
 /* --- Controls --- */
 /* Three columns: settings | nav | actions. The side columns are equal (so nav
    stays centered) and wrap their own contents when the panel is narrow; nav

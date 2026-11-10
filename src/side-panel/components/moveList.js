@@ -7,14 +7,17 @@ import { makeFen } from 'chessops/fen';
 import { makeUci } from 'chessops/util';
 import { formatEvalScore } from '../evalUtils.js';
 
+const CLASS_NAMES = ['brilliant', 'great', 'best', 'excellent', 'good', 'book', 'forced', 'inaccuracy', 'miss', 'mistake', 'blunder'];
+
 export function createMoveList(container, onMoveSelect) {
   let positions = [];       // main line: [{ fen, san, uci }] indexed by ply
   let classifications = [];
   let currentPly = 0;
   let myColor = 'white';
 
-  // Hypothetical line state
-  let hypo = null;  // null or { branchPly, moves: [{fen, san, uci}], currentIndex }
+  // Hypothetical line state. Each move may carry `cls`, its classification
+  // (filled in asynchronously by the variation classifier).
+  let hypo = null;  // null or { branchPly, moves: [{fen, san, uci, cls?}], currentIndex }
 
   function isMyPly(ply) {
     return myColor === 'white' ? ply % 2 === 1 : ply % 2 === 0;
@@ -62,15 +65,17 @@ export function createMoveList(container, onMoveSelect) {
     return Boolean(cls) && (mine || cls.classification === 'book');
   }
 
+  function clearClassificationClasses(el) {
+    for (const c of CLASS_NAMES) el.classList.remove(`move-${c}`);
+  }
+
   function updateClassification(ply, cls) {
     while (classifications.length <= ply) classifications.push(null);
     classifications[ply] = cls;
     const moveSpan = container.querySelector(`.move[data-ply="${ply}"]`);
     if (!moveSpan) return;
     const mine = isMyPly(ply);
-    for (const c of ['brilliant', 'great', 'best', 'excellent', 'good', 'book', 'forced', 'inaccuracy', 'miss', 'mistake', 'blunder']) {
-      moveSpan.classList.remove(`move-${c}`);
-    }
+    clearClassificationClasses(moveSpan);
     if (shouldColorizeMove(cls, mine)) moveSpan.classList.add(`move-${cls.classification}`);
     let displayText = positions[ply]?.san || '';
     if (cls?.glyph) displayText += cls.glyph;
@@ -151,9 +156,8 @@ export function createMoveList(container, onMoveSelect) {
       if (isFirst && !needsNumber) moveSpan.classList.add('hypo-first');
       if (isLast) moveSpan.classList.add('hypo-last');
       if (i === hypo.currentIndex) moveSpan.classList.add('active');
-      // Include trailing space inside non-last spans for continuous borders
-      moveSpan.textContent = isLast ? m.san : m.san + '\u00A0';
       moveSpan.dataset.hypoIndex = i;
+      applyHypoClassification(moveSpan, m, isLast);
       moveSpan.addEventListener('click', () => navigateHypothetical(i));
       container.insertBefore(moveSpan, insertBefore);
       hypoElements.push(moveSpan);
@@ -162,6 +166,44 @@ export function createMoveList(container, onMoveSelect) {
     // Scroll the last hypo element into view
     const lastEl = hypoElements[hypoElements.length - 1];
     if (lastEl) lastEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  // Variation moves are all the user's own exploration, so both sides' moves
+  // are colorized (unlike the main line, which only colors the player's).
+  function applyHypoClassification(moveSpan, move, isLast) {
+    clearClassificationClasses(moveSpan);
+    const glyph = move.cls?.glyph || '';
+    // Include trailing space inside non-last spans for continuous borders
+    moveSpan.textContent = move.san + glyph + (isLast ? '' : '\u00A0');
+    if (move.cls) {
+      moveSpan.classList.add(`move-${move.cls.classification}`);
+      moveSpan.title = classificationTitle(move.cls);
+    } else {
+      moveSpan.removeAttribute('title');
+    }
+  }
+
+  function setHypoClassification(move, cls) {
+    if (!hypo) return;
+    const index = hypo.moves.indexOf(move);
+    if (index === -1) return; // truncated away meanwhile
+    move.cls = cls;
+    const moveSpan = container.querySelector(`.hypo-move[data-hypo-index="${index}"]`);
+    if (moveSpan) applyHypoClassification(moveSpan, move, index === hypo.moves.length - 1);
+  }
+
+  /**
+   * Everything needed to classify hypothetical move `index`: the full line
+   * from the game start, the ply of the move within it, the classification of
+   * the move before it (for Miss), and the move object itself.
+   */
+  function getHypoContext(index) {
+    if (!hypo || index < 0 || index >= hypo.moves.length) return null;
+    const line = positions.slice(0, hypo.branchPly + 1).concat(hypo.moves.slice(0, index + 1));
+    const previousCls = index === 0
+      ? classifications[hypo.branchPly] || null
+      : hypo.moves[index - 1].cls || null;
+    return { positions: line, ply: hypo.branchPly + 1 + index, previousCls, move: hypo.moves[index] };
   }
 
   function removeHypoElements() {
@@ -314,6 +356,9 @@ export function createMoveList(container, onMoveSelect) {
     handleUserMove, closeHypothetical, isInHypothetical, canGoForward,
     startHypothetical, addHypotheticalMove, navigateHypothetical,
     getHypoLength: () => hypo ? hypo.moves.length : 0,
+    getHypoCurrentIndex: () => hypo ? hypo.currentIndex : -1,
+    getCurrentHypoMove: () => hypo ? hypo.moves[hypo.currentIndex] || null : null,
+    getHypoContext, setHypoClassification,
     getCurrentPly: () => currentPly,
     getPosition: (ply) => positions[ply] || null,
     getClassification: (ply) => classifications[ply] || null,

@@ -423,6 +423,11 @@ Implemented in `src/side-panel/engine/gameAnalyzer.js` (`classifyMove`) and
 `src/side-panel/engine/moveHeuristics.js` (`analyzeMoveTactics`), following
 WintrChess's concepts in an independent chessops-based implementation.
 
+**Scope:** moves of an analyzed game, and moves played in Sandbox or in a
+variation branched from a game (`src/side-panel/engine/variationClassifier.js`).
+Variations use the same rules and depth (16); evaluations are cached by FEN, so
+each new variation move usually costs one search.
+
 **Inputs:** Stockfish with MultiPV 2. Evals become Expected Points with the
 Lichess curve. The engine's top move is compared to the played move with
 `isSameMove` (`src/shared/chessUtils.js`), which treats both castling notations
