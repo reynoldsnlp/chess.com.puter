@@ -18,6 +18,12 @@ const WNC =    [20, 20, 20, 20, 20, 20, 40, 40, 55, 50, 60, 20, 10, -28, 48, 48,
 // 11.Bg5 and 12.Qxg5 are not scripted as top moves: on the real board both
 // hang material to the Qd8/Be7 battery, so as top moves they'd be "brilliant".
 const BEST =   ['e2e4', '', '', '', '', '', 'b5a4', 'a2a3', '', '', 'f3e5', 'c6e5', 'a2a3', 'a2a3', 'e4e5', 'a2a3', 'a2a3', 'a2a3', 'a2a3', 'a2a3', 'a2a3', 'a2a3', 'a2a3', 'a2a3', ''];
+// Blunders must lose material: give the engine lines after 9.Qg4 and 9...O-O
+// a material-winning continuation for the opponent (net one pawn each).
+const PV = {
+  17: ['d5f4', 'a2a3', 'f4g2', 'h2h3'], // ...Nf4, ...Nxg2
+  18: ['a4d7', 'a6a5'],                 // Bxd7
+};
 const SECOND = WNC.map((v) => v - 5);
 // Wide gap after 6.Nxe5: 6...Nxe5 is the only good move, but it recaptures a
 // hanging knight (free material), so it must stay "best", not "great".
@@ -39,6 +45,7 @@ async function runFixture() {
   const controller = createMockController(positions, (index) => ({
     wnc: WNC[index],
     best: BEST[index],
+    pv: PV[index] || [],
     second: SECOND[index],
   }));
   const classifications = await analyzeGame(positions, controller, { depth: 1 });

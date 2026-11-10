@@ -447,8 +447,18 @@ Lichess curve. The engine's top move is compared to the played move with
      free material, and the second-best move loses ≥ 0.10 EP.
    - otherwise **Best**.
 5. **Excellent** ≤ 0.02 EP lost; **Good** ≤ 0.05.
-6. **Miss** — ≥ 0.10 lost, from ≥ 0.75 to ≤ 0.55.
-7. **Inaccuracy** ≤ 0.10; **Mistake** ≤ 0.20; **Blunder** > 0.20.
+6. **Blunder (??)** — > 0.20 lost **and** the move loses material or allows
+   a forced mate (chess.com's rule, §3.2). Material loss is read after
+   following the engine line until the opponent is to move, measured against
+   the balance before the opponent's last move (so failing to recapture
+   counts), capped at what the best line keeps. Failing to *win* offered
+   material is not a loss.
+7. **Miss (?)** — failing to punish the opponent's mistake (chess.com's
+   definition, §3.5): the opponent's previous move lost ≥ 0.10, leaving the
+   mover winning (≥ 0.75), and the reply loses ≥ 0.10 and gives it back
+   (≤ 0.55) without itself being a Blunder.
+8. **Inaccuracy** ≤ 0.10; otherwise **Mistake** (including drops > 0.20
+   with no material lost and no mate allowed).
 
 ---
 
@@ -463,8 +473,9 @@ Lichess curve. The engine's top move is compared to the played move with
   is not "free material" and can still be Great.
 - **Book overrides everything**, including bad moves that transpose into a
   named position late in the game; consider restricting to the opening phase.
-- **Adopt from Lichess/chess.com:** never grade the top move as an error; Blunder
-  requires material loss or allowing mate; explicit mate-created/mate-lost
-  rules.
+- **Adopt from Lichess:** explicit mate-created/mate-lost rules (§2.4).
+- **Miss/Blunder material test** depends on the engine line being long enough
+  to show the loss; a line that ends on the opponent's capture is read before
+  that capture.
 - **Test coverage:** the poisoned-sacrifice and trapped-piece paths in
   `moveHeuristics.js` lack dedicated unit tests.

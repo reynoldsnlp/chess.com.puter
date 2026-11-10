@@ -102,18 +102,43 @@ test('best / excellent / good thresholds', () => {
   assert.equal(classOf({ epLoss: 0.04, epBefore: 0.5, epAfter: 0.46 }), 'good');
 });
 
-test('inaccuracy / mistake / blunder thresholds (not winning, so not a miss)', () => {
+test('inaccuracy / mistake / blunder thresholds', () => {
   assert.equal(classOf({ epLoss: 0.07, epBefore: 0.5, epAfter: 0.43 }), 'inaccuracy');
   assert.equal(classOf({ epLoss: 0.15, epBefore: 0.5, epAfter: 0.35 }), 'mistake');
-  assert.equal(classOf({ epLoss: 0.30, epBefore: 0.6, epAfter: 0.30 }), 'blunder');
+  assert.equal(classOf({ epLoss: 0.30, epBefore: 0.6, epAfter: 0.30, materialLost: 3 }), 'blunder');
 });
 
-test('miss: a winning position (>=0.75) dropped to roughly equal or worse', () => {
-  assert.equal(classOf({ epLoss: 0.30, epBefore: 0.80, epAfter: 0.50 }), 'miss');
+test('blunder requires losing material or allowing mate', () => {
+  const bigDrop = { epLoss: 0.30, epBefore: 0.6, epAfter: 0.30 };
+  assert.equal(classOf(bigDrop), 'mistake');
+  assert.equal(classOf({ ...bigDrop, materialLost: 1 }), 'blunder');
+  assert.equal(classOf({ ...bigDrop, allowsMate: true }), 'blunder');
+  // Material loss alone doesn't make a small drop a blunder.
+  assert.equal(classOf({ epLoss: 0.15, epBefore: 0.5, epAfter: 0.35, materialLost: 3 }), 'mistake');
 });
 
-test('the same eval drop is a blunder (not a miss) when no win existed', () => {
-  assert.equal(classOf({ epLoss: 0.30, epBefore: 0.60, epAfter: 0.30 }), 'blunder');
+test("miss: failing to punish the opponent's mistake", () => {
+  assert.equal(classOf({ epLoss: 0.30, epBefore: 0.80, epAfter: 0.50, opponentEpLoss: 0.25 }), 'miss');
+  assert.equal(classOf({ epLoss: 0.12, epBefore: 0.78, epAfter: 0.53, opponentEpLoss: 0.10 }), 'miss');
+});
+
+test('throwing away a win without a prior opponent error is not a miss', () => {
+  // Winning all along (no gift from the opponent): a plain mistake/blunder.
+  assert.equal(classOf({ epLoss: 0.30, epBefore: 0.80, epAfter: 0.50, opponentEpLoss: 0.01 }), 'mistake');
+  assert.equal(classOf({ epLoss: 0.30, epBefore: 0.80, epAfter: 0.50, opponentEpLoss: 0.01, materialLost: 3 }), 'blunder');
+  assert.equal(classOf({ epLoss: 0.30, epBefore: 0.80, epAfter: 0.50 }), 'mistake'); // first move: no previous ply
+});
+
+test('a reply that loses material after an opponent error is a blunder, not a miss', () => {
+  assert.equal(
+    classOf({ epLoss: 0.30, epBefore: 0.80, epAfter: 0.50, opponentEpLoss: 0.25, materialLost: 5 }),
+    'blunder',
+  );
+});
+
+test('no miss when the mover is still winning, or never had a win', () => {
+  assert.equal(classOf({ epLoss: 0.15, epBefore: 0.95, epAfter: 0.80, opponentEpLoss: 0.3 }), 'mistake');
+  assert.equal(classOf({ epLoss: 0.15, epBefore: 0.60, epAfter: 0.45, opponentEpLoss: 0.3 }), 'mistake');
 });
 
 // --- Expected Points math ---

@@ -12,8 +12,9 @@ import {
   getTerminalPositionEval,
   normalizeScoreToWhite,
   scoreToWhiteNormalizedCp,
+  whitePerspectiveScoreSign,
 } from '../evalUtils.js';
-import { analyzeMoveTactics } from './moveHeuristics.js';
+import { analyzeMoveTactics, materialLostByMove } from './moveHeuristics.js';
 
 /**
  * Convert centipawns to expected points (win probability, 0.0-1.0).
@@ -82,8 +83,10 @@ const MATE_CP = 10000;              // scoreToWhiteNormalizedCp maps mate to thi
 const STILL_WINNING_CP = 700;       // winning by this much without the move = nothing special
 const NEAR_BEST_EP_LOSS = 0.02;     // "best or nearly best"
 const GREAT_ONLY_MOVE_GAP = 0.10;   // 2nd-best move must lose >= this much EP
-const MISS_HAD_WIN = 0.75;          // a clear winning chance existed
-const MISS_LOST_WIN = 0.55;         // ...and it's no longer winning after
+const MISS_OPPONENT_ERROR = 0.10;   // opponent's previous move lost >= this (a mistake or worse)
+const MISS_HAD_WIN = 0.75;          // ...giving the mover a clear winning chance
+const MISS_LOST_WIN = 0.55;         // ...which is gone after the mover's reply
+const BLUNDER_MIN_MATERIAL = 1;     // a blunder must lose >= this many pawns (or allow mate)
 
 /**
  * Preliminary filter for Brilliant and Great: the move must matter. Moves
@@ -121,6 +124,11 @@ function isCriticalCandidate({ moverCpAfter, moverCpSecond, promotion, wasInChec
  * Great: engine's top move, passes isCriticalCandidate, doesn't already have
  *   a forced mate, isn't a capture of free material (e.g. a recapture), and
  *   the 2nd-best move would have lost >= 0.10 EP.
+ * Blunder: > 0.20 EP lost AND the move loses material or allows a forced
+ *   mate (chess.com's rule). A large drop without either is a Mistake.
+ * Miss: the opponent just erred (lost >= 0.10 EP), handing the mover a
+ *   winning position (>= 0.75), and the mover's reply (>= 0.10 lost) gives it
+ *   back (<= 0.55) without itself being a blunder. Fails to punish a mistake.
  *
  * @param {object} ctx
  * @param {number} ctx.epLoss - expected points lost (0.0-1.0)
@@ -133,6 +141,9 @@ function isCriticalCandidate({ moverCpAfter, moverCpSecond, promotion, wasInChec
  * @param {boolean} ctx.isForced - only one legal move in the position
  * @param {boolean} ctx.isBookMove - resulting position is a named opening position
  * @param {object} [ctx.tactics] - output of analyzeMoveTactics()
+ * @param {number|null} [ctx.opponentEpLoss] - EP the opponent lost on the previous ply
+ * @param {number} [ctx.materialLost] - pawns the move loses vs. the best line
+ * @param {boolean} [ctx.allowsMate] - the move allows a forced mate against the mover
  */
 export function classifyMove(ctx) {
   const {
@@ -140,6 +151,7 @@ export function classifyMove(ctx) {
     moverCpAfter = 0, moverCpSecond = null,
     isBestMove, isForced, isBookMove,
     tactics = {},
+    opponentEpLoss = null, materialLost = 0, allowsMate = false,
   } = ctx;
 
   if (isBookMove) return { classification: 'book', glyph: '', epLoss };
@@ -172,14 +184,24 @@ export function classifyMove(ctx) {
   if (epLoss <= NEAR_BEST_EP_LOSS) return { classification: 'excellent', glyph: '', epLoss };
   if (epLoss <= 0.05) return { classification: 'good', glyph: '', epLoss };
 
-  // Miss: a mistake-or-worse that specifically threw away a winning position.
-  if (epLoss >= 0.10 && epBefore >= MISS_HAD_WIN && epAfter <= MISS_LOST_WIN) {
+  // Blunder: a big drop that concretely loses material or allows mate.
+  if (epLoss > 0.20 && (allowsMate || materialLost >= BLUNDER_MIN_MATERIAL)) {
+    return { classification: 'blunder', glyph: '??', epLoss };
+  }
+
+  // Miss: failed to punish the opponent's mistake.
+  if (
+    epLoss >= 0.10
+    && opponentEpLoss != null && opponentEpLoss >= MISS_OPPONENT_ERROR
+    && epBefore >= MISS_HAD_WIN
+    && epAfter <= MISS_LOST_WIN
+  ) {
     return { classification: 'miss', glyph: '?', epLoss };
   }
 
   if (epLoss <= 0.10) return { classification: 'inaccuracy', glyph: '?!', epLoss };
-  if (epLoss <= 0.20) return { classification: 'mistake', glyph: '?', epLoss };
-  return { classification: 'blunder', glyph: '??', epLoss };
+  // Includes drops > 0.20 that lose no material and allow no mate.
+  return { classification: 'mistake', glyph: '?', epLoss };
 }
 
 /**
@@ -274,11 +296,28 @@ export async function analyzeGame(positions, sfController, options = {}) {
         ? analyzeMoveTactics(positions[ply - 1].fen, playerMoveUci)
         : null;
 
+      // EP the opponent lost on the previous ply (for Miss).
+      const opponentEpLoss = classifications[ply - 1]?.epLoss ?? null;
+
+      // Concrete damage (for Blunder); only needed for big drops.
+      let materialLost = 0;
+      let allowsMate = false;
+      if (epLoss > 0.20) {
+        materialLost = materialLostByMove(
+          positions[ply - 1].fen, playerMoveUci, evalAfter.pv, evalBefore.pv,
+          ply >= 2 ? positions[ply - 2].fen : null,
+        );
+        const afterScore = evalAfter.displayScore;
+        allowsMate = afterScore?.type === 'mate'
+          && whitePerspectiveScoreSign(afterScore) === (isWhiteMove ? -1 : 1);
+      }
+
       const classification = classifyMove({
         epLoss, epBefore, epAfter, epSecond,
         moverCpAfter, moverCpSecond,
         isBestMove, isForced, isBookMove,
         tactics: tactics || undefined,
+        opponentEpLoss, materialLost, allowsMate,
       });
       const cls = {
         ...classification,
@@ -289,6 +328,8 @@ export async function analyzeGame(positions, sfController, options = {}) {
         evalAfterScore: evalAfter.displayScore,
         engineBestMove: engineBestUci,
         enginePv: evalBefore.pv,
+        materialLost,
+        allowsMate,
         isSacrifice: Boolean(tactics?.isSacrifice),
         sacrificedPieces: tactics?.sacrificedPieces || [],
         secondBestEval: evalBefore.secondWhiteNormalizedCp,

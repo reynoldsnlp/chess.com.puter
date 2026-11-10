@@ -284,3 +284,84 @@ export function analyzeMoveTactics(fenBefore, playedUci) {
   result.sacrificedPieces = unsafeAfter.map((p) => ({ square: makeSquare(p.square), role: p.role }));
   return result;
 }
+
+// --- Material lost by a move (used to require concrete loss for Blunder) ---
+
+// How far to follow an engine line before reading the material balance: long
+// enough to settle an exchange or a short tactic, short enough to stay cheap.
+const SETTLE_PLIES = 10;
+
+/** Material balance in pawns from `color`'s point of view (kings excluded). */
+function materialBalance(pos, color) {
+  let total = 0;
+  for (const square of pos.board.occupied) {
+    const piece = pos.board.get(square);
+    if (piece.role === 'king') continue;
+    total += piece.color === color ? value(piece.role) : -value(piece.role);
+  }
+  return total;
+}
+
+/**
+ * Follow `pv` from `pos` and return `color`'s material balance at the last
+ * point where the opponent is to move (so we never stop halfway through an
+ * exchange the opponent started). Returns null if no such point is reached.
+ */
+function settledBalance(pos, color, pv) {
+  const walk = pos.clone();
+  let last = walk.turn !== color ? materialBalance(walk, color) : null;
+  for (let i = 0; i < pv.length && i < SETTLE_PLIES; i++) {
+    const parsed = parseUci(pv[i]);
+    if (!parsed || !('from' in parsed)) break;
+    const move = normalizeMove(walk, parsed);
+    if (!walk.isLegal(move)) break;
+    walk.play(move);
+    if (walk.turn !== color) last = materialBalance(walk, color);
+  }
+  return last;
+}
+
+/**
+ * Pawns of material the played move loses, after the engine line is followed
+ * until things settle. A big eval drop with no material loss (and no mate
+ * allowed) is a positional error, not a blunder, matching chess.com's rule.
+ *
+ * The reference point is the balance before the opponent's last move (so
+ * failing to recapture counts as a loss), capped at what the engine's best
+ * line keeps (so a move that loses less than the best line isn't penalized).
+ * Failing to *win* material the opponent offered is not a loss; that's a Miss.
+ *
+ * @param {string} fenBefore - FEN before the move (mover to move)
+ * @param {string} playedUci - the move played
+ * @param {string[]} pvAfter - engine line from the position after the move
+ * @param {string[]} bestPv - engine line from the position before the move
+ * @param {string} [fenPrevious] - FEN before the opponent's last move, if any
+ * @returns {number} pawns lost (>= 0; 0 if unparseable)
+ */
+export function materialLostByMove(fenBefore, playedUci, pvAfter = [], bestPv = [], fenPrevious = null) {
+  const before = positionFromFen(fenBefore);
+  if (!before || !playedUci) return 0;
+  const mover = before.turn;
+
+  const parsed = parseUci(playedUci);
+  if (!parsed || !('from' in parsed)) return 0;
+  const move = normalizeMove(before, parsed);
+  if (!before.isLegal(move)) return 0;
+  const after = before.clone();
+  after.play(move);
+
+  const played = settledBalance(after, mover, pvAfter || []) ?? materialBalance(after, mover);
+  const current = materialBalance(before, mover);
+  const best = settledBalance(before, mover, bestPv || []) ?? current;
+  const previous = positionFromFen(fenPrevious);
+  const preExchange = previous ? materialBalance(previous, mover) : current;
+  return Math.max(0, Math.min(best, preExchange) - played);
+}
+
+function positionFromFen(fen) {
+  if (!fen) return null;
+  const setup = parseFen(fen);
+  if (setup.isErr) return null;
+  const chess = Chess.fromSetup(setup.value);
+  return chess.isErr ? null : chess.value;
+}
