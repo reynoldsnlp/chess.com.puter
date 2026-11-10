@@ -39,10 +39,10 @@ jobs:
 
       # Run the SAME hooks developers run on commit (eslint, stylelint, unit, e2e),
       # so CI output is synchronized with the local pre-commit experience.
-      # MV3 extensions require a headed browser; xvfb provides a virtual display
-      # (preinstalled on ubuntu runners) wrapping the whole hook set.
+      # e2e runs Chromium in its new headless mode (which supports MV3
+      # extensions), so no virtual display is needed.
       - name: pre-commit (lint + unit + e2e)
-        run: xvfb-run -a pre-commit run --all-files --show-diff-on-failure
+        run: pre-commit run --all-files --show-diff-on-failure
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

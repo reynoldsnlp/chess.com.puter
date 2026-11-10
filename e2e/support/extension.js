@@ -15,10 +15,12 @@ export const test = base.extend({
   // A persistent context with the unpacked extension loaded.
   context: async ({}, use) => {
     const context = await chromium.launchPersistentContext('', {
-      // MV3 extensions don't load in Playwright's headless (chrome-headless-shell),
-      // so we run headed. CI runs this under xvfb on Linux. (Set PW_HEADLESS=1 only
-      // to experiment with the new headless mode.)
-      headless: !!process.env.PW_HEADLESS,
+      // MV3 extensions don't load in the old headless (chrome-headless-shell),
+      // but they do in Chromium's new headless mode, which Playwright uses for
+      // the full Chromium build via channel 'chromium'. Set PW_HEADED=1 to
+      // watch the browser while debugging.
+      channel: 'chromium',
+      headless: !process.env.PW_HEADED,
       args: [
         `--disable-extensions-except=${PATH_TO_EXTENSION}`,
         `--load-extension=${PATH_TO_EXTENSION}`,
