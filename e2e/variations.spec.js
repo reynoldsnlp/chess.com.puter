@@ -67,3 +67,26 @@ test('a variation branched from an analyzed game is classified', async ({ contex
   await expect(branch).toHaveClass(/\bmove-[a-z]+\b/, { timeout: 60_000 });
   await expect(branch).toHaveAttribute('title', /EP loss/);
 });
+
+test('a move made while the engine is still loading is classified once it is ready', async ({ context, extensionId, serviceWorker }) => {
+  // Simulate a slow machine (as on CI): hold back the NNUE download so the
+  // move lands before Stockfish is ready.
+  await context.addInitScript(() => {
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (url, ...rest) => {
+      if (String(url).endsWith('.nnue')) await new Promise((r) => setTimeout(r, 2000));
+      return realFetch(url, ...rest);
+    };
+  });
+  await setEngineSpeed(serviceWorker, { depth: 6, multiPv: 1 });
+  const panel = await openPanel(context, extensionId);
+  await panel.setViewportSize({ width: 420, height: 900 });
+
+  await panel.locator('#lobby-sandbox').click();
+  await panel.locator('#board-container cg-board piece').first().waitFor();
+  await playMove(panel, 'e2', 'e4');
+
+  const first = panel.locator('.hypo-move[data-hypo-index="0"]');
+  await expect(first).toHaveText(/e4/);
+  await expect(first).toHaveClass(/move-book/, { timeout: 60_000 });
+});

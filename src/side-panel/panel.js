@@ -798,12 +798,12 @@ async function runFullGameAnalysis() {
   evalChart.setData(partialClassifications, positions);
   scheduleBoardRedraw();
 
-  if (!engine) await initEngine();
+  await initEngine();
   if (runId !== analysisRunId) return;
   if (!engine?.isReady()) {
     await new Promise(r => setTimeout(r, 2000));
     if (runId !== analysisRunId) return;
-    if (!engine) await initEngine();
+    await initEngine();
     if (runId !== analysisRunId) return;
     if (!engine?.isReady()) {
       fullAnalysisRunning = false;
@@ -1007,7 +1007,7 @@ async function classifyVariationThenAnalyze() {
   }
   if (!pendingIndexes.length) { resume(); return; }
 
-  if (!engine) await initEngine();
+  await initEngine();
   if (jobId !== variationJobId) return;
   if (!engine?.isReady()) { resume(); return; }
 
@@ -1058,8 +1058,18 @@ function updateHeaderBookLabel(opening) {
 // ENGINE
 // ============================================================
 
-async function initEngine() {
-  if (engine) return;
+// Shared so concurrent callers all wait for the same load. (Previously a
+// second caller saw `engine` already set and returned before it was ready,
+// e.g. a Sandbox move made while Stockfish was still loading was never
+// classified.)
+let engineInitPromise = null;
+
+function initEngine() {
+  if (!engineInitPromise) engineInitPromise = createAndInitEngine();
+  return engineInitPromise;
+}
+
+async function createAndInitEngine() {
   engine = createStockfishController({
     onInfo(info) {
       if (currentAnalysisFen && getTerminalPositionEval(currentAnalysisFen)) return;
@@ -1110,7 +1120,7 @@ async function analyzePosition(fen) {
     evalBar.update(terminalEval.score);
     return;
   }
-  if (!engine) await initEngine();
+  await initEngine();
   if (engine?.isReady()) engine.analyze(fen, controls.getDepth());
 }
 

@@ -26,9 +26,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Installs deps and runs the postinstall (copies Stockfish + downloads NNUE).
+      # Installs exactly what package-lock.json pins (never rewrites it, unlike
+      # `npm install`) and runs the postinstall (copies Stockfish + downloads NNUE).
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       # Browser for the e2e suite (with OS deps for Chromium on Linux).
       - name: Install Playwright Chromium
