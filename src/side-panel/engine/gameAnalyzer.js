@@ -2,6 +2,7 @@
 // Uses chess.com's Expected Points model for move classification.
 // Expected Points = win probability on a 0.0-1.0 scale.
 // "Expected Points Lost" = how much win probability the move cost.
+// See MOVE_CLASSIFICATION.md for the research behind these rules and sources.
 
 import { Chess } from 'chessops/chess';
 import { parseFen } from 'chessops/fen';
@@ -103,7 +104,8 @@ function isCriticalCandidate({ moverCpAfter, moverCpSecond, promotion, wasInChec
 /**
  * Classify a move using chess.com's Expected Points model, including the
  * special Brilliant/Great/Miss classifications (Brilliant/Great follow
- * WintrChess's rules; see moveHeuristics.js).
+ * WintrChess's rules; see moveHeuristics.js). Thresholds and their sources
+ * are documented in MOVE_CLASSIFICATION.md (sections 3 and 7).
  *
  * Expected Points Lost thresholds (0.0-1.0 scale):
  *   Best:       0.00        (matches engine's top choice)

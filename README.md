@@ -12,7 +12,10 @@ subscription.
 - **Full game analysis** with eval-chart progress -- every position evaluated by
   Stockfish 18 running locally in your browser via WebAssembly
 - **Move classification** using chess.com's Expected Points model: Best, Excellent,
-  Good, Inaccuracy, Mistake, Blunder, Book, and Forced
+  Good, Inaccuracy, Mistake, Miss, Blunder, Book, and Forced, plus Brilliant and
+  Great using rules modeled on [WintrChess](https://github.com/WintrCat/wintrchess).
+  See [MOVE_CLASSIFICATION.md](MOVE_CLASSIFICATION.md) for how the classes are
+  determined and a survey of how Lichess, chess.com, and other tools do it.
 - **Accuracy percentage** calculated using the Lichess formula (harmonic mean of
   per-move accuracies)
 - **Interactive analysis board** ([chessground](https://github.com/lichess-org/chessground))
@@ -116,6 +119,10 @@ This extension is a wrapper around tools built by the [Lichess](https://lichess.
 open-source community. Lichess provides world-class chess tools for free -- if
 you find this extension useful, consider
 [donating to Lichess](https://lichess.org/patron).
+
+The Brilliant and Great move rules follow concepts from
+[WintrChess](https://github.com/WintrCat/wintrchess) (GPL-3.0); see
+[MOVE_CLASSIFICATION.md](MOVE_CLASSIFICATION.md) for all sources.
 
 ## Disclaimer
 

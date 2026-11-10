@@ -8,6 +8,7 @@
 //     piece was merely moved to safety, was trapped anyway, or taking it would
 //     cost the opponent equal-or-greater material (or allow mate in one);
 //   - capturing a piece that was unsafe is "free material", never a Great move.
+// See MOVE_CLASSIFICATION.md (sections 4.1 and 7) for details and sources.
 
 import { Chess, normalizeMove } from 'chessops/chess';
 import { parseFen } from 'chessops/fen';
