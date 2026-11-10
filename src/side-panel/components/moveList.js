@@ -336,6 +336,8 @@ function classificationTitle(cls) {
   const evalStr = formatEvalScore(cls.evalAfterScore || { type: 'cp', value: cls.evalAfter }, { showPlus: false });
   const epStr = cls.epLoss !== undefined ? cls.epLoss.toFixed(3) : '?';
   const openingStr = cls.opening?.name ? ` | opening: ${cls.opening.name}` : '';
-  const sacStr = cls.isSacrifice ? ` | sacrifices ${cls.sacAmount} pts` : '';
+  const sacStr = cls.isSacrifice
+    ? ` | sacrifices ${cls.sacrificedPieces.map((p) => `${p.role} on ${p.square}`).join(', ')}`
+    : '';
   return `${cls.classification} (EP loss: ${epStr}) | eval: ${evalStr}${sacStr}${openingStr}`;
 }

@@ -5,13 +5,14 @@
 
 import { Chess } from 'chessops/chess';
 import { parseFen } from 'chessops/fen';
+import { isSameMove } from '../../shared/chessUtils.js';
 import { getPrimaryOpening } from '../../shared/openings.js';
 import {
   getTerminalPositionEval,
   normalizeScoreToWhite,
   scoreToWhiteNormalizedCp,
 } from '../evalUtils.js';
-import { detectSacrifice } from './moveHeuristics.js';
+import { analyzeMoveTactics } from './moveHeuristics.js';
 
 /**
  * Convert centipawns to expected points (win probability, 0.0-1.0).
@@ -74,18 +75,35 @@ function expectedPointsForMover(whiteNormalizedCp, isWhiteMove) {
 }
 
 // Thresholds for the special (Brilliant/Great/Miss) classifications.
-// All EP values are from the mover's perspective on the 0.0-1.0 scale.
-const SAC_MIN_PAWNS = 2;        // a real sacrifice is at least ~a minor piece
-const BRILLIANT_NOT_WINNING = 0.97; // can't already be completely winning
-const BRILLIANT_NOT_LOSING = 0.5;   // can't be losing after the sacrifice
+// EP values are from the mover's perspective on the 0.0-1.0 scale; cp values
+// are mover-perspective centipawns (mate = +/-MATE_CP).
+const MATE_CP = 10000;              // scoreToWhiteNormalizedCp maps mate to this
+const STILL_WINNING_CP = 700;       // winning by this much without the move = nothing special
 const NEAR_BEST_EP_LOSS = 0.02;     // "best or nearly best"
 const GREAT_ONLY_MOVE_GAP = 0.10;   // 2nd-best move must lose >= this much EP
 const MISS_HAD_WIN = 0.75;          // a clear winning chance existed
 const MISS_LOST_WIN = 0.55;         // ...and it's no longer winning after
 
 /**
+ * Preliminary filter for Brilliant and Great: the move must matter. Moves
+ * that are forced by check, queen promotions, moves in losing positions, and
+ * moves where you'd still be completely winning without them don't qualify.
+ */
+function isCriticalCandidate({ moverCpAfter, moverCpSecond, promotion, wasInCheck }) {
+  const winningAnyway = moverCpSecond != null
+    ? moverCpSecond >= STILL_WINNING_CP
+    : moverCpAfter >= STILL_WINNING_CP;
+  if (winningAnyway) return false;
+  if (moverCpAfter < 0) return false;
+  if (promotion === 'queen') return false;
+  if (wasInCheck) return false;
+  return true;
+}
+
+/**
  * Classify a move using chess.com's Expected Points model, including the
- * special Brilliant/Great/Miss classifications.
+ * special Brilliant/Great/Miss classifications (Brilliant/Great follow
+ * WintrChess's rules; see moveHeuristics.js).
  *
  * Expected Points Lost thresholds (0.0-1.0 scale):
  *   Best:       0.00        (matches engine's top choice)
@@ -95,44 +113,60 @@ const MISS_LOST_WIN = 0.55;         // ...and it's no longer winning after
  *   Mistake:    0.10-0.20
  *   Blunder:    0.20+
  *
+ * Brilliant: engine's top move, passes isCriticalCandidate, not a promotion,
+ *   and is a genuine sacrifice (leaves a piece en prise that isn't poisoned
+ *   or already lost).
+ * Great: engine's top move, passes isCriticalCandidate, doesn't already have
+ *   a forced mate, isn't a capture of free material (e.g. a recapture), and
+ *   the 2nd-best move would have lost >= 0.10 EP.
+ *
  * @param {object} ctx
  * @param {number} ctx.epLoss - expected points lost (0.0-1.0)
- * @param {number} ctx.epBefore - mover's EP before the move
+ * @param {number} ctx.epBefore - mover's EP before the move (best line)
  * @param {number} ctx.epAfter - mover's EP after the move
- * @param {number} ctx.epSecond - mover's EP had they played the 2nd-best move
- * @param {number} ctx.sacAmount - material sacrificed in pawns (>= 0)
+ * @param {number|null} ctx.epSecond - mover's EP for the 2nd-best move (null if unknown)
+ * @param {number} ctx.moverCpAfter - mover-perspective cp after the move
+ * @param {number|null} ctx.moverCpSecond - mover-perspective cp of the 2nd-best move
  * @param {boolean} ctx.isBestMove - player's move matches engine's top choice
  * @param {boolean} ctx.isForced - only one legal move in the position
  * @param {boolean} ctx.isBookMove - resulting position is a named opening position
+ * @param {object} [ctx.tactics] - output of analyzeMoveTactics()
  */
 export function classifyMove(ctx) {
   const {
-    epLoss, epBefore, epAfter, epSecond,
-    sacAmount, isBestMove, isForced, isBookMove,
+    epLoss, epBefore, epAfter, epSecond = null,
+    moverCpAfter = 0, moverCpSecond = null,
+    isBestMove, isForced, isBookMove,
+    tactics = {},
   } = ctx;
 
   if (isBookMove) return { classification: 'book', glyph: '', epLoss };
   if (isForced) return { classification: 'forced', glyph: '', epLoss };
+  if (tactics.isCheckmate) return { classification: 'best', glyph: '', epLoss };
 
-  const isNearBest = isBestMove || epLoss <= NEAR_BEST_EP_LOSS;
+  if (isBestMove) {
+    const candidate = isCriticalCandidate({
+      moverCpAfter, moverCpSecond,
+      promotion: tactics.promotion, wasInCheck: tactics.wasInCheck,
+    });
 
-  // Brilliant: a sound material sacrifice that is best/near-best, where you
-  // weren't already winning and aren't losing afterward.
-  if (
-    isNearBest
-    && sacAmount >= SAC_MIN_PAWNS
-    && epBefore <= BRILLIANT_NOT_WINNING
-    && epAfter >= BRILLIANT_NOT_LOSING
-  ) {
-    return { classification: 'brilliant', glyph: '!!', epLoss };
+    if (candidate && !tactics.promotion && tactics.isSacrifice) {
+      return { classification: 'brilliant', glyph: '!!', epLoss };
+    }
+
+    if (
+      candidate
+      && moverCpAfter < MATE_CP
+      && !tactics.capturedFreeMaterial
+      && epSecond != null
+      && (epBefore - epSecond) >= GREAT_ONLY_MOVE_GAP
+    ) {
+      return { classification: 'great', glyph: '!', epLoss };
+    }
+
+    return { classification: 'best', glyph: '', epLoss };
   }
 
-  // Great: the only good move — a clear gap to the 2nd-best alternative.
-  if (isNearBest && (epBefore - epSecond) >= GREAT_ONLY_MOVE_GAP) {
-    return { classification: 'great', glyph: '!', epLoss };
-  }
-
-  if (isBestMove) return { classification: 'best', glyph: '', epLoss };
   if (epLoss <= NEAR_BEST_EP_LOSS) return { classification: 'excellent', glyph: '', epLoss };
   if (epLoss <= 0.05) return { classification: 'good', glyph: '', epLoss };
 
@@ -164,7 +198,7 @@ export async function analyzeGame(positions, sfController, options = {}) {
   const classifications = [null]; // index 0 = starting position
 
   // Ensure clean engine state. MultiPV=2 so we know the 2nd-best move's eval,
-  // which is needed to detect "Great" (the only good move) classifications.
+  // which is needed for the Great (only good move) and "winning anyway" checks.
   await sfController.stopAndWait();
   sfController.setMultiPV(2);
   await sfController.stopAndWait();
@@ -217,26 +251,32 @@ export async function analyzeGame(positions, sfController, options = {}) {
       const epAfter = expectedPointsForMover(evalAfter.whiteNormalizedCp, isWhiteMove);
       const epLoss = Math.max(0, epBefore - epAfter);
 
-      // EP the mover would have had playing the engine's 2nd-best move.
-      // Falls back to epBefore (no gap) when a 2nd line wasn't available.
-      const epSecond = evalBefore.secondWhiteNormalizedCp != null
-        ? expectedPointsForMover(evalBefore.secondWhiteNormalizedCp, isWhiteMove)
-        : epBefore;
+      // EP/cp the mover would have had playing the engine's 2nd-best move
+      // (null when a 2nd line wasn't available).
+      const toMover = (wnc) => (isWhiteMove ? wnc : -wnc);
+      const secondWnc = evalBefore.secondWhiteNormalizedCp;
+      const epSecond = secondWnc != null ? expectedPointsForMover(secondWnc, isWhiteMove) : null;
+      const moverCpSecond = secondWnc != null ? toMover(secondWnc) : null;
+      const moverCpAfter = toMover(evalAfter.whiteNormalizedCp);
 
       const engineBestUci = evalBefore.bestMove || '';
       const playerMoveUci = positions[ply].uci || '';
-      const isBestMove = engineBestUci && playerMoveUci && engineBestUci === playerMoveUci;
+      const isBestMove = isSameMove(positions[ply - 1].fen, engineBestUci, playerMoveUci);
       const isForced = evalBefore.legalMoveCount === 1;
       const opening = getPrimaryOpening(positions[ply].fen);
       const isBookMove = Boolean(opening);
 
-      // Material sacrificed by this move (walks the post-move engine PV to
-      // settle recaptures). Used for Brilliant detection.
-      const sacAmount = detectSacrifice(positions[ply - 1].fen, playerMoveUci, evalAfter.pv);
+      // Static board facts (sacrifice, free capture, check, promotion). Only
+      // the engine's top move can be Brilliant/Great, so skip the work otherwise.
+      const tactics = isBestMove && !isBookMove && !isForced
+        ? analyzeMoveTactics(positions[ply - 1].fen, playerMoveUci)
+        : null;
 
       const classification = classifyMove({
         epLoss, epBefore, epAfter, epSecond,
-        sacAmount, isBestMove, isForced, isBookMove,
+        moverCpAfter, moverCpSecond,
+        isBestMove, isForced, isBookMove,
+        tactics: tactics || undefined,
       });
       const cls = {
         ...classification,
@@ -247,8 +287,8 @@ export async function analyzeGame(positions, sfController, options = {}) {
         evalAfterScore: evalAfter.displayScore,
         engineBestMove: engineBestUci,
         enginePv: evalBefore.pv,
-        sacAmount,
-        isSacrifice: sacAmount >= SAC_MIN_PAWNS,
+        isSacrifice: Boolean(tactics?.isSacrifice),
+        sacrificedPieces: tactics?.sacrificedPieces || [],
         secondBestEval: evalBefore.secondWhiteNormalizedCp,
       };
 

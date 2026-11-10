@@ -16,59 +16,84 @@ function ctx(overrides) {
     epBefore: 0.5,
     epAfter: 0.5,
     epSecond: 0.5,
-    sacAmount: 0,
+    moverCpAfter: 0,
+    moverCpSecond: 0,
     isBestMove: false,
     isForced: false,
     isBookMove: false,
+    tactics: {},
     ...overrides,
   };
 }
 
 const classOf = (overrides) => classifyMove(ctx(overrides)).classification;
+const SAC = { isSacrifice: true };
 
 test('book and forced take precedence over everything', () => {
-  assert.equal(classOf({ isBookMove: true, isBestMove: true, sacAmount: 5 }), 'book');
-  assert.equal(classOf({ isForced: true, isBestMove: true, sacAmount: 5 }), 'forced');
+  assert.equal(classOf({ isBookMove: true, isBestMove: true, tactics: SAC }), 'book');
+  assert.equal(classOf({ isForced: true, isBestMove: true, tactics: SAC }), 'forced');
 });
 
-test('brilliant: sound sacrifice that stays at least equal and was not already winning', () => {
+test('checkmate is simply best', () => {
+  assert.equal(classOf({ isBestMove: true, tactics: { isCheckmate: true, isSacrifice: true } }), 'best');
+});
+
+test('brilliant: top move that is a genuine sacrifice in a competitive position', () => {
+  assert.equal(classOf({ isBestMove: true, moverCpAfter: 50, moverCpSecond: 20, tactics: SAC }), 'brilliant');
+});
+
+test('brilliant requires the engine top move, not just a near-best one', () => {
+  assert.equal(classOf({ epLoss: 0.01, moverCpAfter: 50, tactics: SAC }), 'excellent');
+});
+
+test('no brilliant/great when still completely winning without the move', () => {
+  const winning = { isBestMove: true, epBefore: 0.95, epSecond: 0.8, moverCpAfter: 900, moverCpSecond: 700 };
+  assert.equal(classOf({ ...winning, tactics: SAC }), 'best');
+  assert.equal(classOf(winning), 'best');
+});
+
+test('without a 2nd line, "winning anyway" falls back to the eval after the move', () => {
+  assert.equal(classOf({ isBestMove: true, epSecond: null, moverCpSecond: null, moverCpAfter: 800, tactics: SAC }), 'best');
+  assert.equal(classOf({ isBestMove: true, epSecond: null, moverCpSecond: null, moverCpAfter: 100, tactics: SAC }), 'brilliant');
+});
+
+test('no brilliant/great in a losing position', () => {
+  assert.equal(classOf({ isBestMove: true, moverCpAfter: -50, tactics: SAC }), 'best');
+  assert.equal(classOf({ isBestMove: true, moverCpAfter: -50, epBefore: 0.45, epSecond: 0.2 }), 'best');
+});
+
+test('no brilliant/great when escaping check', () => {
+  assert.equal(classOf({ isBestMove: true, tactics: { ...SAC, wasInCheck: true } }), 'best');
+  assert.equal(classOf({ isBestMove: true, epBefore: 0.6, epSecond: 0.4, tactics: { wasInCheck: true } }), 'best');
+});
+
+test('promotions are never brilliant; queen promotions are never great', () => {
+  assert.equal(classOf({ isBestMove: true, tactics: { ...SAC, promotion: 'knight' } }), 'best');
+  assert.equal(classOf({ isBestMove: true, epBefore: 0.6, epSecond: 0.4, tactics: { promotion: 'queen' } }), 'best');
+  assert.equal(classOf({ isBestMove: true, epBefore: 0.6, epSecond: 0.4, tactics: { promotion: 'knight' } }), 'great');
+});
+
+test('great: the only good move (clear gap to the 2nd-best alternative)', () => {
+  assert.equal(classOf({ isBestMove: true, epBefore: 0.7, epAfter: 0.7, epSecond: 0.55, moverCpAfter: 230 }), 'great');
+});
+
+test('great is not awarded for capturing free material (e.g. a recapture)', () => {
   assert.equal(
-    classOf({ epLoss: 0.03, epBefore: 0.6, epAfter: 0.55, epSecond: 0.6, sacAmount: 3, isBestMove: true }),
-    'brilliant',
-  );
-});
-
-test('a sacrifice is NOT brilliant when already completely winning', () => {
-  assert.notEqual(
-    classOf({ epLoss: 0.0, epBefore: 0.99, epAfter: 0.98, epSecond: 0.99, sacAmount: 3, isBestMove: true }),
-    'brilliant',
-  );
-});
-
-test('a sacrifice is NOT brilliant when losing afterward', () => {
-  const c = classOf({ epLoss: 0.3, epBefore: 0.6, epAfter: 0.3, epSecond: 0.6, sacAmount: 3, isBestMove: false });
-  assert.notEqual(c, 'brilliant');
-});
-
-test('a sacrifice that is too small (a pawn) is not brilliant', () => {
-  assert.equal(
-    classOf({ epLoss: 0.0, epBefore: 0.6, epAfter: 0.58, epSecond: 0.6, sacAmount: 1, isBestMove: true }),
+    classOf({ isBestMove: true, epBefore: 0.7, epSecond: 0.4, moverCpAfter: 230, tactics: { capturedFreeMaterial: true } }),
     'best',
   );
 });
 
-test('great: the only good move (clear gap to the 2nd-best alternative)', () => {
-  assert.equal(
-    classOf({ epLoss: 0.0, epBefore: 0.7, epAfter: 0.7, epSecond: 0.55, sacAmount: 0, isBestMove: true }),
-    'great',
-  );
+test('great is not awarded when the mover already has a forced mate', () => {
+  assert.equal(classOf({ isBestMove: true, epBefore: 1, epSecond: 0.5, moverCpAfter: 10000, moverCpSecond: 0 }), 'best');
+});
+
+test('great needs a known 2nd-best line', () => {
+  assert.equal(classOf({ isBestMove: true, epBefore: 0.7, epSecond: null, moverCpSecond: null, moverCpAfter: 230 }), 'best');
 });
 
 test('brilliant outranks great when a move is both a sacrifice and the only good move', () => {
-  assert.equal(
-    classOf({ epLoss: 0.0, epBefore: 0.7, epAfter: 0.6, epSecond: 0.55, sacAmount: 3, isBestMove: true }),
-    'brilliant',
-  );
+  assert.equal(classOf({ isBestMove: true, epBefore: 0.7, epSecond: 0.55, moverCpAfter: 230, tactics: SAC }), 'brilliant');
 });
 
 test('best / excellent / good thresholds', () => {

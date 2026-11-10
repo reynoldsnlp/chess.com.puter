@@ -12,23 +12,26 @@ const fixture = (name) =>
 
 // Per-position-index eval script for all-classifications.pgn. Values are
 // white-normalized centipawns; the mock re-encodes them per side to move.
-// Each ply's class is produced by the eval pair (before, after) plus the
-// best-move match and (for the sacrifice) the recapture continuation.
+// Each ply's class is produced by the eval pair (before, after), the best-move
+// match, the 2nd-best line, and static board analysis of the move.
 const WNC =    [20, 20, 20, 20, 20, 20, 40, 40, 55, 50, 60, 20, 10, -28, 48, 48, 222, -61, 320, 0, 33, 33, 44, 44, 60];
-const BEST =   ['e2e4', '', '', '', '', '', 'b5a4', 'a2a3', '', '', 'f3e5', 'c6e5', 'a2a3', 'a2a3', 'e4e5', 'a2a3', 'a2a3', 'a2a3', 'a2a3', 'a2a3', 'c1g5', 'a2a3', 'h5g5', 'a2a3', ''];
-// detectSacrifice walks the PV of the position AFTER the move, so the recapture
-// that settles 6.Nxe5 lives on index 11 (the position after Nxe5).
-const PV = { 11: ['c6e5'] };
+// 11.Bg5 and 12.Qxg5 are not scripted as top moves: on the real board both
+// hang material to the Qd8/Be7 battery, so as top moves they'd be "brilliant".
+const BEST =   ['e2e4', '', '', '', '', '', 'b5a4', 'a2a3', '', '', 'f3e5', 'c6e5', 'a2a3', 'a2a3', 'e4e5', 'a2a3', 'a2a3', 'a2a3', 'a2a3', 'a2a3', 'a2a3', 'a2a3', 'a2a3', 'a2a3', ''];
 const SECOND = WNC.map((v) => v - 5);
-SECOND[11] = 180; // wide gap after 6.Nxe5 -> 6...Nxe5 is the only good move ("great")
+// Wide gap after 6.Nxe5: 6...Nxe5 is the only good move, but it recaptures a
+// hanging knight (free material), so it must stay "best", not "great".
+SECOND[11] = 180;
+// Wide gap after 7...Ng6: 8.e5 (a quiet pawn push) is the only good move -> "great".
+SECOND[14] = -150;
 
 const EXPECTED = [
   /* 1 */ 'book', /* 2 */ 'book', /* 3 */ 'book', /* 4 */ 'book', /* 5 */ 'book',
   /* 6 */ 'book', /* 7 */ 'best', /* 8 */ 'excellent', /* 9 */ 'book', /* 10 */ 'book',
-  /* 11 */ 'brilliant', /* 12 */ 'great', /* 13 */ 'good', /* 14 */ 'inaccuracy',
-  /* 15 */ 'best', /* 16 */ 'mistake', /* 17 */ 'blunder', /* 18 */ 'blunder',
-  /* 19 */ 'miss', /* 20 */ 'good', /* 21 */ 'best', /* 22 */ 'excellent',
-  /* 23 */ 'best', /* 24 */ 'excellent',
+  /* 11 */ 'brilliant', /* 12 */ 'best', /* 13 */ 'good', /* 14 */ 'inaccuracy',
+  /* 15 */ 'great', /* 16 */ 'mistake', /* 17 */ 'blunder', /* 18 */ 'blunder',
+  /* 19 */ 'miss', /* 20 */ 'good', /* 21 */ 'excellent', /* 22 */ 'excellent',
+  /* 23 */ 'excellent', /* 24 */ 'excellent',
 ];
 
 async function runFixture() {
@@ -36,7 +39,6 @@ async function runFixture() {
   const controller = createMockController(positions, (index) => ({
     wnc: WNC[index],
     best: BEST[index],
-    pv: PV[index] || [],
     second: SECOND[index],
   }));
   const classifications = await analyzeGame(positions, controller, { depth: 1 });
@@ -67,7 +69,7 @@ test('the brilliant move is flagged as a sacrifice and carries its glyph', async
   assert.ok(brilliant);
   assert.equal(brilliant.glyph, '!!');
   assert.equal(brilliant.isSacrifice, true);
-  assert.ok(brilliant.sacAmount >= 2);
+  assert.deepEqual(brilliant.sacrificedPieces, [{ square: 'e5', role: 'knight' }]);
 });
 
 test('forced: a position with a single legal move is classified "forced"', async () => {

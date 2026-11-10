@@ -344,8 +344,8 @@ body {
 
 .summary-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-wrap: nowrap;
+  gap: 6px;
   justify-content: center;
 }
 
@@ -356,7 +356,7 @@ body {
   gap: 3px;
   align-items: center;
 
-  padding: 2px 6px;
+  padding: 2px 4px;
   border-radius: 3px;
 
   font-size: 12px;

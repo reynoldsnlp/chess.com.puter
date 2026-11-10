@@ -1,5 +1,9 @@
 // Shared chess utilities.
 
+import { Chess, normalizeMove } from 'chessops/chess';
+import { parseFen } from 'chessops/fen';
+import { parseUci } from 'chessops/util';
+
 /**
  * Normalize a UCI move for display purposes.
  * chessops outputs castling as king-captures-rook (e1h1, e1a1, e8h8, e8a8).
@@ -24,4 +28,30 @@ export function uciSquares(uci) {
   const castling = CASTLING_MAP[uci];
   if (castling) return { from: castling.from, to: castling.to };
   return { from: uci.slice(0, 2), to: uci.slice(2, 4) };
+}
+
+/**
+ * Do two UCI strings denote the same move in the position `fen`?
+ * Castling may be written as the king's destination (Stockfish: e1g1) or as
+ * king-captures-rook (chessops: e1h1); both normalize to the same move.
+ * @param {string} fen - position before the move
+ * @param {string} uciA
+ * @param {string} uciB
+ * @returns {boolean}
+ */
+export function isSameMove(fen, uciA, uciB) {
+  if (!uciA || !uciB) return false;
+  if (uciA === uciB) return true;
+  const a = parseUci(uciA);
+  const b = parseUci(uciB);
+  if (!a || !b || !('from' in a) || !('from' in b)) return false;
+
+  const setup = parseFen(fen || '');
+  if (setup.isErr) return false;
+  const pos = Chess.fromSetup(setup.value);
+  if (pos.isErr) return false;
+
+  const na = normalizeMove(pos.value, a);
+  const nb = normalizeMove(pos.value, b);
+  return na.from === nb.from && na.to === nb.to && na.promotion === nb.promotion;
 }
