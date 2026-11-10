@@ -1,5 +1,5 @@
 import * as esbuild from 'esbuild';
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -60,6 +60,8 @@ function copyStatic() {
   cpSync('src/side-panel/index.html', 'dist/side-panel/index.html');
   cpSync('src/side-panel/panel.css', 'dist/side-panel/panel.css');
   if (existsSync('public/stockfish')) {
+    // Mirror exactly, so files from an older engine version aren't shipped.
+    rmSync('dist/stockfish', { recursive: true, force: true });
     cpSync('public/stockfish', 'dist/stockfish', { recursive: true });
   }
   if (existsSync('src/icons')) {

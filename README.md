@@ -10,7 +10,7 @@ subscription.
 ## Features
 
 - **Full game analysis** with eval-chart progress -- every position evaluated by
-  Stockfish 18 running locally in your browser via WebAssembly
+  Stockfish 19 running locally in your browser via WebAssembly
 - **Move classification** using chess.com's Expected Points model: Best, Excellent,
   Good, Inaccuracy, Mistake, Miss, Blunder, Book, and Forced, plus Brilliant and
   Great using rules modeled on [WintrChess](https://github.com/WintrCat/wintrchess).
@@ -68,7 +68,7 @@ Then load the extension in Chrome:
 3. Click "Load unpacked"
 4. Select the `dist/` directory
 
-Note: `npm install` downloads the Stockfish NNUE neural network (~15 MB) from
+Note: `npm install` downloads the Stockfish NNUE neural network (~1 MB) from
 stockfishchess.org. This is a one-time build dependency -- the file is bundled
 into the extension and no network calls are made at runtime.
 
@@ -104,7 +104,7 @@ Only three runtime dependencies, all Lichess/Stockfish open-source projects:
 |---------|---------|---------|
 | [@lichess-org/chessground](https://github.com/lichess-org/chessground) | Interactive chess board UI | GPL-3.0+ |
 | [chessops](https://github.com/niklasf/chessops) | Chess logic, PGN/FEN parsing | GPL-3.0+ |
-| [@lichess-org/stockfish-web](https://github.com/lichess-org/stockfish-web) | Stockfish 18 WASM engine | AGPL-3.0 |
+| [@lichess-org/stockfish-web](https://github.com/lichess-org/stockfish-web) | Stockfish 19 WASM engine | AGPL-3.0 |
 
 Build tool: [esbuild](https://esbuild.github.io/) (dev only).
 

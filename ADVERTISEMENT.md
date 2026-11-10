@@ -1,6 +1,6 @@
 Free the fish! Analyze your chess.com and Lichess games with Stockfish -- for free, right in a side panel.
 
-chess.com.puter brings the power of Stockfish 18 to your browser without paying for a premium subscription. Open any completed game on chess.com or Lichess, click Import, and get a full game analysis in seconds. Or paste any PGN. Or open the Sandbox and explore from a fresh board.
+chess.com.puter brings the power of Stockfish 19 to your browser without paying for a premium subscription. Open any completed game on chess.com or Lichess, click Import, and get a full game analysis in seconds. Or paste any PGN. Or open the Sandbox and explore from a fresh board.
 
 FEATURES
 
@@ -8,7 +8,7 @@ Works on Chess.com and Lichess
 Import completed games from either site with one click. The extension automatically detects games on the current page.
 
 Full Game Analysis
-Every position evaluated by Stockfish 18 running locally in your browser. No server. No cloud. No waiting in a queue. Your computer does the work.
+Every position evaluated by Stockfish 19 running locally in your browser. No server. No cloud. No waiting in a queue. Your computer does the work.
 
 Move Classifications
 See exactly where you went wrong (and right). Moves are classified using the Expected Points model: Best, Excellent, Good, Book, Inaccuracy, Mistake, and Blunder -- with colored annotations and icons on the board.
@@ -53,7 +53,7 @@ Zero network calls at runtime. No APIs. No tracking. No data collection. Everyth
 
 TECHNICAL DETAILS
 
-Built with Lichess open-source tools: chessground (board UI), chessops (chess logic), and Stockfish 18 WebAssembly. Vanilla JavaScript -- no frameworks. ~15 MB total (mostly the Stockfish neural network).
+Built with Lichess open-source tools: chessground (board UI), chessops (chess logic), and Stockfish 19 WebAssembly. Vanilla JavaScript -- no frameworks. ~9 MB total.
 
 FREE & OPEN SOURCE
 

@@ -1085,7 +1085,7 @@ async function initEngine() {
       if (!el) return;
       if (status.state === 'analyzing') {
         const nps = status.nps ? ` | ${(status.nps / 1e6).toFixed(1)} MN/s` : '';
-        el.textContent = `SF 18 | d${status.depth}${nps} | Free the fish!`;
+        el.textContent = `SF 19 | d${status.depth}${nps} | Free the fish!`;
       } else if (status.state === 'ready') el.textContent = 'Free the fish!';
       else el.textContent = status.text;
     },

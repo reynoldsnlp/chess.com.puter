@@ -17,7 +17,7 @@ export function createStockfishController(callbacks) {
       if (sf) return;
       try {
         callbacks.onStatus?.({ state: 'loading', text: 'Loading Stockfish...' });
-        const sfUrl = chrome.runtime.getURL('stockfish/sf_18_smallnet.js');
+        const sfUrl = chrome.runtime.getURL('stockfish/sf_19_smallnet.js');
         const module = await import(sfUrl);
         const Factory = module.default || Object.values(module)[0];
         if (typeof Factory !== 'function') throw new Error('Stockfish factory not found');
